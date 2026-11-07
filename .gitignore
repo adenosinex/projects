@@ -1,0 +1,38 @@
+# --- 密钥与本地配置（绝不提交） ---
+.env
+*.key
+*.crt
+*.pem
+config.py
+video_paths.json
+client_token.json
+localdy_client.json
+localdy_sessions.json
+localdy_client_state.json
+localdy_client_pending.json
+
+# --- 数据 ---
+*.db
+*.sqlite3
+.buvid3
+data/
+logs/
+*.log
+
+# --- 媒体与数据集（不是代码） ---
+*.m4a
+*.mp3
+*.mp4
+*.mkv
+audio_bilibili/
+
+# --- Python ---
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# --- 构建产物 ---
+*.tar.gz
+*.zip
+*.bak*

@@ -1,0 +1,12 @@
+services:
+  speedtest:
+    image: ghcr.io/librespeed/speedtest:latest
+    container_name: speedtest
+    restart: unless-stopped
+    environment:
+      MODE: standalone
+      TITLE: "My Speedtest"
+      TELEMETRY: "false"
+      WEBPORT: 8080
+    ports:
+      - "8080:8080"

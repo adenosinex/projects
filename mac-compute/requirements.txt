@@ -1,0 +1,23 @@
+fastapi==0.115.6
+uvicorn==0.34.0
+python-multipart==0.0.20
+pillow==11.1.0
+opencv-python-headless==4.10.0.84
+numpy==2.2.1
+Shapely==2.0.7
+onnxruntime==1.31.1
+pyclipper==1.4.0
+pyyaml==6.0.3
+# Install RapidOCR with --no-deps AFTER the above:
+#   pip install Shapely==2.0.7 onnxruntime pyclipper six pyyaml
+#   pip install --no-deps rapidocr-onnxruntime==1.3.23
+# RapidOCR 1.3.23 pins Shapely<2.0, whose 1.8.5 sdist fails to build
+# on Python 3.12 (pkgutil.ImpImporter removed). Shapely 2.0.7 works
+# in practice; opencv-python-headless satisfies the cv2 import.
+rapidocr-onnxruntime==1.3.23
+six==1.17.0
+polars==1.22.0
+imagehash==4.3.1
+psutil==7.2.2
+mlx==0.32.4
+mlx-audio==0.5.8

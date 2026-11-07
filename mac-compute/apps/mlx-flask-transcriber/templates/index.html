@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>本地语音转文字 · 任务工作台</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script defer src="{{ url_for('static', filename='app.js') }}"></script>
+</head>
+<body>
+<div class="wrap">
+  <header class="heading">
+    <div class="eyebrow">LOCAL TRANSCRIPTION · MLX · TASK QUEUE</div>
+    <h1>音频转文字工作台</h1>
+    <p>Qwen3-ASR · Apple Silicon 本地运行 · 保留完整文字 · 多任务排队</p>
+  </header>
+
+  <section class="panel" aria-label="提交转录任务">
+    <div class="spread"><h2>提交新任务</h2><span class="hint">提交后可关闭页面，后台继续处理</span></div>
+    <label class="drop" for="file" id="drop">
+      <span class="upload-icon">↑</span>
+      <strong>选择音视频文件，或拖放到这里</strong>
+      <small>MP3、M4A、WAV、FLAC、MP4、MOV 等 · 最大 500 MB</small>
+    </label>
+    <input type="file" id="file" hidden accept=".mp3,.m4a,.wav,.flac,.aac,.ogg,.mp4,.mov,.webm">
+    <label class="model-picker" for="model-profile">识别模式
+      <select id="model-profile">
+        {% for key, profile in model_profiles.items() %}
+        <option value="{{ key }}"{% if key == default_profile %} selected{% endif %}>{{ profile.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <p class="hint">日常模式兼顾速度与效果；重要音频可选 1.7B。首次使用所选模型需要下载。</p>
+    <div class="setup">
+      <span class="filename" id="filename">未选择文件</span>
+      <button type="button" id="reset-retry" class="ghost small hidden">取消加载</button>
+      <button type="button" id="start">提交转录任务</button>
+    </div>
+    <div id="upload-status" class="hint" role="status"></div>
+  </section>
+
+  <section class="panel" id="history-panel" aria-label="任务列表">
+    <div class="spread history-heading"><h2>任务列表</h2><div class="history-actions">
+      <button id="load-latest-failed" class="secondary small" type="button" disabled>加载最近失败</button>
+      <button id="delete-selected" class="danger small" type="button" disabled>删除所选</button>
+      <button id="clear-history" class="danger small" type="button" disabled>清空历史</button>
+      <button id="refresh" class="secondary small" type="button">刷新列表</button>
+    </div></div>
+    <p class="hint">任务保存在 SQLite；浏览器刷新或关闭后重开都可以找回。每 2 秒更新一次状态。</p>
+    <p class="hint">可勾选批量删除或清空全部已完成、失败、已取消的记录及文件，排队和运行中的任务会保留。加载失败记录后可调整识别模式再重试。</p>
+    <div class="table-scroll">
+      <table class="job-table">
+        <thead><tr><th class="select-cell"><input id="select-all-jobs" type="checkbox" aria-label="全选本页可删除的历史记录" disabled></th><th>文件</th><th>状态</th><th>进度</th><th>创建时间</th><th>操作</th></tr></thead>
+        <tbody id="jobs-body"><tr><td colspan="6" class="empty">正在读取任务…</td></tr></tbody>
+      </table>
+    </div>
+    <p id="history-message" class="hint" role="status"></p>
+    <p id="history-action-message" class="hint" role="status"></p>
+  </section>
+
+  <section class="panel hidden" id="progress-panel" aria-live="polite">
+    <div class="spread"><div><h2 id="task-title">当前任务</h2><span class="hint" id="task-id"></span></div><strong id="percent">0%</strong></div>
+    <div class="track" id="progress-track" role="progressbar" aria-label="任务进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="bar"></div></div>
+    <div class="spread"><strong id="stage">等待任务</strong><div class="history-actions"><button id="retry-current" class="secondary small hidden" type="button">加载此失败记录</button><button id="cancel-current" class="danger small" type="button">终止此任务</button></div></div>
+    <p class="hint" id="message">正在准备…</p>
+    <p class="hint" id="progress-detail"></p>
+  </section>
+
+  <section class="panel hidden" id="stats-panel">
+    <div class="spread"><h2>转录统计</h2><span class="hint" id="format-mode">—</span></div>
+    <div class="stats-grid">
+      <div class="stat"><span>音频时长</span><strong id="s-duration">—</strong></div>
+      <div class="stat"><span>从提交到现在 / 总耗时</span><strong id="s-total">—</strong></div>
+      <div class="stat"><span>语音识别用时</span><strong id="s-recognition">—</strong></div>
+      <div class="stat"><span>预处理用时</span><strong id="s-preprocess">—</strong></div>
+      <div class="stat"><span>识别倍率</span><strong id="s-speed">—</strong></div>
+      <div class="stat"><span>识别字数</span><strong id="s-words">—</strong></div>
+      <div class="stat"><span>字幕数 / 段落数</span><strong id="s-lines">—</strong></div>
+      <div class="stat"><span>需核对的音频块</span><strong id="s-quality">—</strong></div>
+      <div class="stat"><span>模型加载用时</span><strong id="s-model-load">—</strong></div>
+      <div class="stat"><span>识别模型</span><strong id="s-model">—</strong></div>
+      <div class="stat"><span>硬切边界</span><strong id="s-hard-cuts">—</strong></div>
+      <div class="stat"><span>达到生成上限的音频块</span><strong id="s-token-limit">—</strong></div>
+    </div>
+    <p class="hint" id="quality-note">异常提示用于帮助回听核对；没有提示也不代表内容已经验证。</p>
+    <p class="hint">任务总耗时包含排队时间；识别倍率仅按模型推理耗时计算。</p>
+  </section>
+
+  <section class="panel hidden" id="result-panel">
+    <div class="spread top-line"><h2>识别结果</h2><span class="hint" id="char-info"></span></div>
+    <div class="tabs" role="tablist" aria-label="结果显示模式">
+      <button type="button" class="tab active" role="tab" aria-selected="true" data-mode="article">阅读稿</button>
+      <button type="button" class="tab" role="tab" aria-selected="false" data-mode="captions">粗略时间轴</button>
+      <button type="button" class="tab" role="tab" aria-selected="false" data-mode="raw">识别原稿</button>
+    </div>
+    <textarea id="result" spellcheck="false" placeholder="完成第一个音频片段后会显示文本…" aria-label="转录文字"></textarea>
+    <div class="actions">
+      <button id="copy" type="button">一键复制当前内容</button>
+      <button id="download-txt" class="secondary" type="button">下载阅读稿 TXT</button>
+      <button id="download-srt" class="secondary" type="button">下载粗略 SRT</button>
+      <button id="download-captions" class="secondary" type="button">下载时间轴 TXT</button>
+      <button id="download-raw" class="secondary" type="button">下载识别原稿 TXT</button>
+      <button id="download-stats" class="secondary" type="button">下载统计 JSON</button>
+      <button id="download-asr" class="secondary" type="button">下载分块识别记录 JSON</button>
+    </div>
+    <p class="hint" id="copy-feedback" role="status"></p>
+    <p class="hint">阅读稿仅调整换行，保留模型输出的文字和标点。时间轴对应音频块，不是逐句或逐词对齐。文本框支持临时编辑，下载文件仍是后台生成的版本。</p>
+  </section>
+  <footer>默认监听 0.0.0.0:5840 · 局域网直接访问 · 无账号密码 · 首次模型下载需要网络</footer>
+</div>
+</body>
+</html>
