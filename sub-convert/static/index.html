@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sub-convert · 订阅转换</title>
+<style>
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+         max-width: 1200px; margin: 0 auto; padding: 16px; color: #222; }
+  h1 { font-size: 22px; } h2 { font-size: 17px; margin-top: 28px;
+         border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+  input[type=text] { padding: 7px; font-size: 14px; }
+  select { padding: 6px; font-size: 13px; }
+  button { padding: 7px 14px; font-size: 14px; cursor: pointer; }
+  button.primary { background: #1a73e8; color: #fff; border: none;
+    border-radius: 6px; padding: 9px 20px; }
+  button:disabled { opacity: .5; cursor: default; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border: 1px solid #ddd; padding: 5px 7px; text-align: left;
+    vertical-align: top; }
+  th { background: #f6f6f6; }
+  .ok { color: #0a7d1e; } .bad { color: #c00; } .skip { color: #888; }
+  .card { background: #f9f9f9; border: 1px solid #e3e3e3; border-radius: 8px;
+    padding: 12px; margin: 10px 0; }
+  .muted { color: #666; font-size: 13px; }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 12px; word-break: break-all; }
+  .feat { color: #0a7d1e; font-weight: 600; }
+  .relay { color: #8a5a00; font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>sub-convert · 订阅转换</h1>
+<p class="muted"><a href="featured.html">精选维护 →</a>（每 5 分钟监测各订阅「精选」节点的实际速度，3 个全坏才换替补）</p>
+<p class="muted">上传订阅（链接或文件），每小时自动实测一次下载速度（10 路并行测速，慢节点自动断路），
+把下载最快的 3 个节点放进「精选」分组，节点名带上实测速度（精确到 0.1MB），生成一个新的 Clash 订阅给 FlClash 用。
+给一个订阅配一个辅助订阅后，还会测中继路径，把最快的 3 条中继链放进「精选中继」分组。</p>
+
+<h2>1 · 添加订阅</h2>
+<div class="card">
+  <div>
+    <input type="text" id="subUrl" placeholder="粘贴订阅链接（https://…）" style="width:60%">
+    <input type="text" id="subName" placeholder="名字（可选）" style="width:18%">
+    <button id="addUrlBtn">添加链接</button>
+  </div>
+  <div style="margin-top:8px">
+    <input type="file" id="subFile">
+    <button id="uploadBtn">上传订阅文件</button>
+    <span class="muted">支持 base64 链接串、Clash YAML、节点链接文件</span>
+  </div>
+  <div id="subMsg" class="muted"></div>
+</div>
+
+<h2>2 · 订阅与转换</h2>
+<div id="statusLine" class="muted"></div>
+<div style="margin:6px 0"><label class="muted">并行数
+  <input type="number" id="workersInput" value="10" min="1" max="20" style="width:56px;padding:5px">
+  <span class="muted">（1–20，1 = 串行，默认 10）</span></label></div>
+<div id="progressCard" class="card" style="display:none">
+  <div><b id="progTitle">测速进行中…</b> <span id="progElapsed" class="muted"></span></div>
+  <div style="margin:8px 0">
+    <div style="background:#eee;border-radius:4px;height:12px">
+      <div id="progBar" style="background:#1a73e8;height:12px;border-radius:4px;width:0%"></div>
+    </div>
+    <div id="progLine" class="muted" style="margin-top:4px"></div>
+  </div>
+  <table id="progTable">
+    <thead><tr><th>节点</th><th>状态</th><th>延迟</th><th>谷歌</th><th>YouTube</th><th>下载速度</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</div>
+<table id="subTable">
+  <thead><tr><th>订阅</th><th>节点</th><th>上次测速</th><th>精选 Top 3（下载速度）</th>
+  <th>精选中继 Top 3</th><th>辅助订阅（当中继）</th>
+  <th>转换订阅（FlClash 用）</th><th>操作</th></tr></thead>
+  <tbody></tbody>
+</table>
+
+<script>
+const API = location.pathname.indexOf("/convert") === 0 ? "/convert-api" : "/api";
+const ORIGIN = location.origin;
+
+async function api(path, opts) {
+  const r = await fetch(API + path, opts);
+  const t = await r.text();
+  let j = null;
+  try { j = JSON.parse(t); } catch (e) {}
+  if (!r.ok) throw new Error((j && j.detail) || t || ("HTTP " + r.status));
+  return j;
+}
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"]/g,
+    c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+}
+
+function fmtSpeed(mb) {
+  return (mb == null) ? "—" : mb.toFixed(1) + "MB";
+}
+
+function fmtElapsed(sec) {
+  if (sec == null) return "";
+  sec = Math.round(sec);
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return m > 0 ? m + "分" + s + "秒" : s + "秒";
+}
+
+function fmtSecs(s) {
+  return (s == null) ? "—" : s.toFixed(1) + "s";
+}
+
+function fmtDelay(ms) {
+  return (ms == null) ? "" : " · " + ms + "ms";
+}
+
+function resultRow(r) {
+  const st = r.status === "ok" ? '<span class="ok">通</span>'
+    : r.status === "slow" ? '<span class="skip">过慢</span>'
+    : r.status === "skipped" ? '<span class="skip">跳过</span>'
+    : '<span class="bad">失败</span>';
+  const dl = r.delay_ms == null ? "—" : r.delay_ms + "ms";
+  const dlMb = r.download_mb == null ? "—" : r.download_mb.toFixed(1) + "MB";
+  return "<tr><td>" + esc(r.name) + (r.kind === "chain" ? " <span class='relay'>[中继]</span>" : "")
+    + "</td><td>" + st + "</td><td>" + dl + "</td><td>" + fmtSecs(r.google_s)
+    + "</td><td>" + fmtSecs(r.youtube_s) + "</td><td>" + dlMb + "</td></tr>";
+}
+
+let progTimer = null;
+
+async function pollProgress() {
+  let p = null;
+  try { p = await api("/test/progress"); } catch (e) { return; }
+  const card = document.getElementById("progressCard");
+  if (!p || (p.status === "idle" && !p.results.length && !p.sub_id)) {
+    if (progTimer) { clearInterval(progTimer); progTimer = null; }
+    card.style.display = "none";
+    return;
+  }
+  card.style.display = "block";
+  const running = p.status === "running";
+  const total = p.total || 0, done = p.done || 0;
+  document.getElementById("progBar").style.width =
+    total ? Math.round(done / total * 100) + "%" : "0%";
+  const phaseName = p.phase === "direct" ? "直连测速" : p.phase === "chains" ? "中继测速" : p.phase || "";
+  document.getElementById("progTitle").textContent =
+    running ? "测速进行中…" : p.status === "done" ? "测速完成" : p.status === "error" ? "测速出错" : "测速" + p.status;
+  document.getElementById("progLine").textContent =
+    (phaseName ? phaseName + " · " : "") + (p.current ? "正在测：" + p.current + " · " : "")
+    + done + "/" + total + (p.workers ? " · " + p.workers + " 路并行" : "");
+  let elapsed = p.elapsed_s;
+  if (running && p.started_at) {
+    elapsed = (Date.now() - new Date(p.started_at.replace("T", " ") + " +08:00").getTime()) / 1000;
+    if (isNaN(elapsed) || elapsed < 0) elapsed = null;
+  }
+  document.getElementById("progElapsed").textContent =
+    elapsed != null ? "用时 " + fmtElapsed(elapsed) : "";
+  const tb = document.querySelector("#progTable tbody");
+  const rows = (p.results || []).slice().sort((a, b) =>
+    (b.download_bps || 0) - (a.download_bps || 0));
+  tb.innerHTML = rows.map(resultRow).join("")
+    || '<tr><td colspan="6" class="muted">等待结果…</td></tr>';
+  if (!running && progTimer) { clearInterval(progTimer); progTimer = null; }
+}
+
+function startPolling() {
+  if (!progTimer) progTimer = setInterval(pollProgress, 2000);
+  pollProgress();
+}
+
+async function refresh() {
+  let subs = [];
+  try { subs = await api("/subscriptions"); } catch (e) {
+    document.getElementById("statusLine").textContent = "加载失败：" + e.message;
+    return;
+  }
+  let status = "";
+  try {
+    const h = await api("/health");
+    if (h.running_test) { status = "正在测速…（" + h.running_test + "）"; startPolling(); }
+    else if (h.cron_running) { status = "每小时自动更新正在跑…"; startPolling(); }
+    else status = "空闲。每小时自动测速一次（下载速度，并行 10 路，慢节点自动断路）。";
+  } catch (e) { status = ""; }
+  document.getElementById("statusLine").textContent = status;
+
+  const tb = document.querySelector("#subTable tbody");
+  tb.innerHTML = subs.map(s => {
+    const feat = (s.featured || []).map(f =>
+      '<div class="feat">' + esc(f.name) + " · " + fmtSpeed(f.speed_mb)
+      + fmtDelay(f.delay_ms) + "</div>"
+    ).join("") || '<span class="muted">未测速</span>';
+    const relay = (s.featured_relay || []).map(f =>
+      '<div class="relay">' + esc(f.name) + " · " + fmtSpeed(f.speed_mb)
+      + fmtDelay(f.delay_ms) + "</div>"
+    ).join("") || '<span class="muted">—</span>';
+    const conv = ORIGIN + "/s/" + s.token + ".yaml";
+    const last = s.last_test_at
+      ? esc(s.last_test_at) + "<br>通 " + s.last_test.ok + "/" + s.last_test.total
+        + (s.last_test.slow ? "（过慢 " + s.last_test.slow + "）" : "")
+        + (s.last_test.chains_total ? "<br>中继 " + s.last_test.chains_ok + "/" + s.last_test.chains_total : "")
+        + (s.last_test.elapsed_s != null ? "<br>用时 " + fmtElapsed(s.last_test.elapsed_s) : "")
+        + (s.last_test.workers != null ? " · " + s.last_test.workers + " 路并行" : "")
+        + ((s.last_results || []).length ? ' <button data-showres="' + s.id + '">查看结果</button>' : "")
+      : "未测速";
+    const ready = s.convert_ready
+      ? '<div class="mono">' + esc(conv) + '</div>'
+        + '<button data-copy="' + esc(conv) + '">复制链接</button>'
+      : '<span class="muted">测速完成后生成</span>';
+    const auxOpts = '<option value="">（不选中继）</option>' + subs
+      .filter(o => o.id !== s.id)
+      .map(o => '<option value="' + o.id + '"' + (o.id === s.aux_sub_id ? " selected" : "")
+        + ">" + esc(o.name) + "</option>").join("");
+    return "<tr><td><b>" + esc(s.name) + "</b><br><span class='muted'>" + esc(s.source)
+      + "</span></td><td>" + s.node_count + "</td><td>" + last + "</td><td>" + feat
+      + "</td><td>" + relay + "</td><td>"
+      + '<select data-aux="' + s.id + '">' + auxOpts + "</select> "
+      + '<button data-auxsave="' + s.id + '">保存</button>'
+      + (s.aux_name ? '<div class="muted">当前：' + esc(s.aux_name) + "</div>" : "")
+      + "</td><td>" + ready + "</td><td>"
+      + '<button data-test="' + s.id + '">立即测速</button> '
+      + '<button data-del="' + s.id + '">删除</button></td></tr>';
+  }).join("") || '<tr><td colspan="8" class="muted">还没有订阅，先添加一个。</td></tr>';
+
+  tb.querySelectorAll("[data-copy]").forEach(b => b.onclick = () => {
+    navigator.clipboard.writeText(b.getAttribute("data-copy"));
+    b.textContent = "已复制";
+    setTimeout(() => b.textContent = "复制链接", 1500);
+  });
+  tb.querySelectorAll("[data-test]").forEach(b => b.onclick = async () => {
+    b.disabled = true;
+    const w = document.getElementById("workersInput");
+    const workers = w ? Math.max(1, Math.min(20, parseInt(w.value, 10) || 10)) : 10;
+    try {
+      await api("/test", { method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({sub_id: b.getAttribute("data-test"), workers}) });
+      document.getElementById("statusLine").textContent = "测速已开始…（" + workers + " 路并行）";
+      startPolling();
+    } catch (e) { alert("启动失败：" + e.message); }
+    refresh();
+  });
+  tb.querySelectorAll("[data-showres]").forEach(b => b.onclick = () => {
+    const s = subs.find(x => x.id === b.getAttribute("data-showres"));
+    if (!s || !(s.last_results || []).length) return;
+    const card = document.getElementById("progressCard");
+    card.style.display = "block";
+    document.getElementById("progTitle").textContent = "上次测速结果 · " + s.name;
+    document.getElementById("progBar").style.width = "100%";
+    document.getElementById("progLine").textContent =
+      (s.last_test_at || "") + " · 通 " + s.last_test.ok + "/" + s.last_test.total;
+    document.getElementById("progElapsed").textContent =
+      s.last_test.elapsed_s != null ? "用时 " + fmtElapsed(s.last_test.elapsed_s) : "";
+    const rows = s.last_results.slice().sort((a, b) =>
+      (b.download_bps || 0) - (a.download_bps || 0));
+    document.querySelector("#progTable tbody").innerHTML = rows.map(resultRow).join("");
+  });
+  tb.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => {
+    if (!confirm("删除这个订阅？转换链接也会失效。")) return;
+    await api("/subscriptions/" + b.getAttribute("data-del"), { method: "DELETE" });
+    refresh();
+  });
+  tb.querySelectorAll("[data-auxsave]").forEach(b => b.onclick = async () => {
+    const subId = b.getAttribute("data-auxsave");
+    const sel = tb.querySelector('[data-aux="' + subId + '"]');
+    const auxId = sel ? sel.value : "";
+    try {
+      await api("/subscriptions/" + subId + "/aux", { method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({aux_sub_id: auxId}) });
+      b.textContent = "已保存";
+      setTimeout(() => b.textContent = "保存", 1500);
+    } catch (e) { alert("保存失败：" + e.message); }
+    refresh();
+  });
+}
+
+document.getElementById("addUrlBtn").onclick = async () => {
+  const url = document.getElementById("subUrl").value.trim();
+  const name = document.getElementById("subName").value.trim();
+  if (!url) return;
+  const msg = document.getElementById("subMsg");
+  msg.textContent = "正在拉取并解析…";
+  try {
+    const s = await api("/subscriptions", { method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({url, name}) });
+    msg.textContent = "已添加：" + s.name + "（" + s.node_count + " 个节点），正在首次测速…";
+    document.getElementById("subUrl").value = "";
+    document.getElementById("subName").value = "";
+  } catch (e) { msg.textContent = "添加失败：" + e.message; }
+  refresh();
+};
+
+document.getElementById("uploadBtn").onclick = async () => {
+  const f = document.getElementById("subFile").files[0];
+  if (!f) return;
+  const msg = document.getElementById("subMsg");
+  msg.textContent = "正在解析…";
+  const fd = new FormData();
+  fd.append("file", f);
+  try {
+    const r = await fetch(API + "/subscriptions", { method: "POST", body: fd });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.detail || ("HTTP " + r.status));
+    msg.textContent = "已添加：" + j.name + "（" + j.node_count + " 个节点），正在首次测速…";
+    document.getElementById("subFile").value = "";
+  } catch (e) { msg.textContent = "添加失败：" + e.message; }
+  refresh();
+};
+
+refresh();
+setInterval(refresh, 15000);
+</script>
+</body>
+</html>

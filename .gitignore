@@ -1,25 +1,60 @@
-# --- 密钥与本地配置（绝不提交） ---
+# ============================================================
+# projects monorepo .gitignore
+# Rule: the repo holds SOURCE ONLY. No secrets, no credentials,
+# no databases, no runtime data, no caches, no venvs.
+# The sync script enforces the same excludes on the Mac side.
+# ============================================================
+
+# --- Secrets & credentials (NEVER commit) ---
 .env
+*.env
+auth.json
+*.secret
+*.pem
 *.key
 *.crt
-*.pem
-config.py
+*.auth
+*token*
+*credential*
+*password*
+*cookie*
+*session_secret*
+sub.yaml
+subscription.urls
+# (config.py itself is clean source — credentials live in auth.json, excluded above)
+# (config.example.py is a template and IS tracked)
+
+# --- Local / runtime config (environment-specific, regenerable) ---
 video_paths.json
 client_token.json
 localdy_client.json
 localdy_sessions.json
 localdy_client_state.json
 localdy_client_pending.json
+client_status.json
+data.json
+aliases.json
 
-# --- 数据 ---
+# --- Databases & runtime state ---
 *.db
+*.db-wal
+*.db-shm
+*.sqlite
 *.sqlite3
-.buvid3
 data/
+db/
+downloads/
+runs/
+run/
 logs/
 *.log
+sub-node/status/
+experience.json
+experience-v1.json
+experience-udp.json
+speed.json
 
-# --- 媒体与数据集（不是代码） ---
+# --- Media & datasets (not code) ---
 *.m4a
 *.mp3
 *.mp4
@@ -32,7 +67,15 @@ __pycache__/
 .venv/
 venv/
 
-# --- 构建产物 ---
+# --- Node ---
+node_modules/
+
+# --- Build / archives / backups ---
 *.tar.gz
 *.zip
 *.bak*
+.buvid3
+
+# --- OS ---
+.DS_Store
+Thumbs.db

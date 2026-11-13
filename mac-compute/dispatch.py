@@ -4,7 +4,7 @@ from pathlib import Path
 from config import (
     ASR_DEFAULTS, DATA_DEFAULTS, IMAGE_BATCH_DEFAULTS,
     IMAGE_SELECT_DEFAULTS, OCR_DEFAULTS, VIDEO_DEFAULTS,
-    VIDEO_THUMBS_DEFAULTS,
+    VIDEO_THUMBS_DEFAULTS, VPS_PROBE_DEFAULTS,
 )
 
 
@@ -34,6 +34,10 @@ def run_job(job_type, src, out_dir, params, progress_cb):
     if job_type == "data_csv":
         from workers.data import run_data_csv
         return run_data_csv(src, out_dir, {**DATA_DEFAULTS, **params}, progress_cb)
+    if job_type == "vps_probe":
+        # No file input: src is None, the target comes from params.
+        from workers.vps_probe import run_vps_probe
+        return run_vps_probe(src, out_dir, {**VPS_PROBE_DEFAULTS, **params}, progress_cb)
     if job_type == "face_cluster":
         raise RuntimeError("face_cluster is not implemented in this build yet")
     if job_type == "novel_index":
@@ -42,4 +46,7 @@ def run_job(job_type, src, out_dir, params, progress_cb):
 
 
 JOB_TYPES = ["asr", "asr_batch", "video_transcode", "video_thumbs", "image_select",
-             "image_batch", "ocr", "face_cluster", "data_csv", "novel_index"]
+             "image_batch", "ocr", "face_cluster", "data_csv", "novel_index", "vps_probe"]
+
+# Task types that take no file input (all params, e.g. vps_probe).
+NO_INPUT_TYPES = {"vps_probe"}

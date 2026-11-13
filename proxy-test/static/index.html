@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>proxy-test · 订阅测速</title>
+<style>
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+         max-width: 1100px; margin: 0 auto; padding: 16px; color: #222; }
+  h1 { font-size: 22px; } h2 { font-size: 17px; margin-top: 28px;
+         border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+  .tabs button { padding: 8px 18px; margin-right: 6px; cursor: pointer;
+    border: 1px solid #888; background: #f2f2f2; border-radius: 6px; }
+  .tabs button.active { background: #222; color: #fff; }
+  input[type=text], select { padding: 7px; font-size: 14px; }
+  button { padding: 7px 14px; font-size: 14px; cursor: pointer; }
+  button.primary { background: #1a73e8; color: #fff; border: none;
+    border-radius: 6px; padding: 9px 20px; }
+  button:disabled { opacity: .5; cursor: default; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border: 1px solid #ddd; padding: 5px 7px; text-align: left; }
+  th { background: #f6f6f6; }
+  .ok { color: #0a7d1e; } .bad { color: #c00; } .skip { color: #888; }
+  .card { background: #f9f9f9; border: 1px solid #e3e3e3; border-radius: 8px;
+    padding: 12px; margin: 10px 0; }
+  .muted { color: #666; font-size: 13px; }
+  #progress { font-size: 14px; }
+  .bar { height: 10px; background: #eee; border-radius: 5px; overflow: hidden; }
+  .bar > div { height: 100%; background: #1a73e8; width: 0%; }
+</style>
+</head>
+<body>
+<h1>proxy-test · 订阅测速</h1>
+<p class="muted">先测中继点直连，再测中继 → 出口。死链自动跳过（断路器），不浪费时间。
+测试跑在 Mac 本地 mihomo 上，每次只跑一组。</p>
+
+<h2>1 · 订阅</h2>
+<div class="card">
+  <div>
+    <input type="text" id="subUrl" placeholder="粘贴订阅链接（https://…）" style="width:60%">
+    <input type="text" id="subName" placeholder="名字（可选）" style="width:18%">
+    <button id="addUrlBtn">添加链接</button>
+  </div>
+  <div style="margin-top:8px">
+    <input type="file" id="subFile">
+    <button id="uploadBtn">上传订阅文件</button>
+    <span class="muted">支持 base64 链接串、Clash YAML、节点链接文件</span>
+  </div>
+  <div id="subMsg" class="muted"></div>
+</div>
+<table id="subTable">
+  <thead><tr><th>名字</th><th>来源</th><th>节点数</th><th>地区 / 出口协议</th><th></th></tr></thead>
+  <tbody></tbody>
+</table>
+
+<h2>2 · 测试</h2>
+<div class="tabs">
+  <button id="tabSingle" class="active">单订阅直连</button>
+  <button id="tabRelay">中继测试</button>
+</div>
+<div class="card" id="singlePanel">
+  <p class="muted">测一个订阅里所有节点的直连表现（延迟 / 谷歌 / YouTube / 下载速度）。</p>
+  <select id="singleSub" style="width:60%"></select>
+  <label style="margin-left:8px">并行 <input id="workers" type="number" value="10" min="1" max="20" style="width:52px"> 个
+  <span class="muted">（1 = 串行）</span></label>
+  <button class="primary" id="startSingleBtn">开始测试</button>
+</div>
+<div class="card" id="relayPanel" style="display:none">
+  <p class="muted">中继订阅提供中继节点（按地区取一个），出口订阅提供出口节点（全部协议都测）。
+  先测直连，再测中继链；死的中继/出口会自动跳过它所有的链。</p>
+  <label>中继订阅 <select id="relaySub" style="width:38%"></select></label>
+  <label style="margin-left:12px">出口订阅 <select id="exitSub" style="width:38%"></select></label>
+  <button class="primary" id="startRelayBtn">开始测试</button>
+</div>
+<div id="progress"></div>
+
+<h2>3 · 结果</h2>
+<div id="summary" class="muted"></div>
+<div id="compare"></div>
+<table id="resTable">
+  <thead><tr><th>节点 / 链路</th><th>类型</th><th>延迟</th><th>谷歌</th>
+  <th>YouTube</th><th>下载速度</th><th>状态</th></tr></thead>
+  <tbody></tbody>
+</table>
+
+<h2>历史测试</h2>
+<table id="histTable">
+  <thead><tr><th>时间</th><th>模式</th><th>状态</th><th>总数</th><th>通过</th><th>跳过</th><th>失败</th><th>最快</th><th></th></tr></thead>
+  <tbody></tbody>
+</table>
+
+<script>
+const $ = id => document.getElementById(id);
+let subs = [];
+let pollTimer = null;
+let mode = "single";
+
+function fmtSpeed(bps) {
+  if (bps == null) return "—";
+  if (bps >= 1048576) return (bps/1048576).toFixed(2) + " MB/s";
+  if (bps >= 1024) return (bps/1024).toFixed(0) + " KB/s";
+  return bps + " B/s";
+}
+function cell(m) {
+  if (!m) return "—";
+  if (m.status === "skipped") return '<span class="skip">跳过</span>';
+  if (m.code == null || m.code === 0) return '<span class="bad">失败</span>';
+  return m.code + " · " + (m.time_s != null ? m.time_s.toFixed(2) + "s" : "");
+}
+function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const t = await r.json().catch(()=>({}));
+  if (!r.ok) throw new Error(t.detail || ("HTTP " + r.status));
+  return t;
+}
+
+async function refreshSubs() {
+  subs = await api("/api/subscriptions");
+  const tb = $("subTable").querySelector("tbody");
+  tb.innerHTML = subs.map(s => {
+    const detail = (s.regions||[]).join(" ") +
+      (s.servers ? " | " + Object.entries(s.servers).map(([k,v])=>k+"["+v.join(",")+"]").join(" ") : "");
+    return `<tr><td>${esc(s.name)}</td><td class="muted">${esc(s.source)}</td>
+      <td>${s.node_count}</td><td class="muted">${esc(detail)}</td>
+      <td><button onclick="delSub('${s.id}')">删除</button></td></tr>`;
+  }).join("");
+  const opts = subs.map(s => `<option value="${s.id}">${esc(s.name)} (${s.node_count}节点)</option>`).join("");
+  $("singleSub").innerHTML = opts;
+  $("relaySub").innerHTML = opts;
+  $("exitSub").innerHTML = opts;
+}
+async function delSub(id) {
+  if (!confirm("删除这个订阅？")) return;
+  await api("/api/subscriptions/" + id, {method: "DELETE"});
+  refreshSubs();
+}
+$("addUrlBtn").onclick = async () => {
+  const url = $("subUrl").value.trim();
+  if (!url) return;
+  $("subMsg").textContent = "拉取中…";
+  try {
+    const r = await api("/api/subscriptions", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({url, name: $("subName").value.trim()})});
+    $("subMsg").textContent = "已添加：" + r.name + "（" + r.node_count + " 节点）";
+    $("subUrl").value = ""; $("subName").value = "";
+    refreshSubs();
+  } catch(e) { $("subMsg").textContent = "失败：" + e.message; }
+};
+$("uploadBtn").onclick = async () => {
+  const f = $("subFile").files[0];
+  if (!f) return;
+  const fd = new FormData();
+  fd.append("file", f);
+  $("subMsg").textContent = "上传解析中…";
+  try {
+    const r = await api("/api/subscriptions", {method: "POST", body: fd});
+    $("subMsg").textContent = "已添加：" + r.name + "（" + r.node_count + " 节点）";
+    $("subFile").value = "";
+    refreshSubs();
+  } catch(e) { $("subMsg").textContent = "失败：" + e.message; }
+};
+
+function setMode(m) {
+  mode = m;
+  $("tabSingle").classList.toggle("active", m === "single");
+  $("tabRelay").classList.toggle("active", m === "relay");
+  $("singlePanel").style.display = m === "single" ? "" : "none";
+  $("relayPanel").style.display = m === "relay" ? "" : "none";
+}
+$("tabSingle").onclick = () => setMode("single");
+$("tabRelay").onclick = () => setMode("relay");
+
+async function startTest(body) {
+  try {
+    const r = await api("/api/test/start", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body)});
+    $("progress").innerHTML = "测试已启动…";
+    poll(r.test_id);
+  } catch(e) { alert("启动失败：" + e.message); }
+}
+$("startSingleBtn").onclick = () => {
+  const id = $("singleSub").value;
+  if (!id) return alert("先添加一个订阅");
+  const w = Math.max(1, Math.min(20, parseInt($("workers").value || "10", 10) || 10));
+  startTest({mode: "single", sub_id: id, workers: w});
+};
+$("startRelayBtn").onclick = () => {
+  const a = $("relaySub").value, b = $("exitSub").value;
+  if (!a || !b) return alert("先选两个订阅");
+  startTest({mode: "relay", relay_sub_id: a, exit_sub_id: b});
+};
+
+function poll(id) {
+  clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    try {
+      const run = await api("/api/test/" + id);
+      renderRun(run);
+      if (run.status === "done" || run.status === "error") {
+        clearInterval(pollTimer);
+        refreshHist();
+      }
+    } catch(e) { clearInterval(pollTimer); }
+  }, 2000);
+}
+
+function fmtElapsed(s) {
+  if (s == null) return "";
+  s = Math.round(s);
+  if (s < 60) return s + "秒";
+  return Math.floor(s / 60) + "分" + (s % 60) + "秒";
+}
+
+function renderRun(run) {
+  const p = run.progress;
+  const wtag = run.workers ? ` · ${run.workers} 并行` : "";
+  if (run.status === "running" && p) {
+    const pct = p.total ? Math.round(100 * p.done / p.total) : 0;
+    $("progress").innerHTML = `<div>进行中：${esc(p.phase)} ${esc(p.name)}
+      (${p.done}/${p.total})${wtag}</div><div class="bar"><div style="width:${pct}%"></div></div>`;
+  } else if (run.status === "done") {
+    $("progress").innerHTML = `<span class="ok">完成</span> ${esc(run.created_at)}` +
+      (run.elapsed_s != null ? ` · 用时 ${fmtElapsed(run.elapsed_s)}` : "") + wtag;
+  } else if (run.status === "error") {
+    $("progress").innerHTML = `<span class="bad">出错：${esc(run.error||"")}</span>`;
+  }
+  const s = run.summary;
+  if (s) {
+    $("summary").innerHTML = `总数 ${s.total} · 通过 ${s.ok} · 跳过 ${s.skipped}` +
+      (s.slow ? ` · 过慢 ${s.slow}` : "") + ` · 失败 ${s.failed}` +
+      (s.best ? ` · 最快：${esc(s.best.name)} ${fmtSpeed(s.best.speed_bps)}` : "");
+  }
+  const rows = (run.results || []).map(r => {
+    const st = r.status === "ok" ? '<span class="ok">通过</span>'
+      : r.status === "skipped" ? '<span class="skip">跳过</span>'
+      : r.status === "slow" ? '<span class="skip">过慢</span>'
+      : '<span class="bad">失败</span>';
+    const dl = r.download && (r.download.status === "ok" || r.download.status === "slow")
+      ? fmtSpeed(r.download.speed_bps) : "—";
+    const note = r.status === "skipped" && r.delay && r.delay.reason ? esc(r.delay.reason) : "";
+    return `<tr><td>${esc(r.name)}${note ? "<br><span class='skip'>"+note+"</span>" : ""}</td>
+      <td>${esc(r.kind||"")}</td><td>${cell(r.delay)}</td><td>${cell(r.google)}</td>
+      <td>${cell(r.youtube)}</td><td>${dl}</td><td>${st}</td></tr>`;
+  }).join("");
+  $("resTable").querySelector("tbody").innerHTML = rows;
+  renderCompare(run);
+}
+
+function renderCompare(run) {
+  if (run.mode !== "relay") { $("compare").innerHTML = ""; return; }
+  const byServer = {};
+  for (const r of run.results || []) {
+    if (r.kind === "exit-direct") {
+      byServer[r.server] = byServer[r.server] || {};
+      byServer[r.server][r.protocol] = r;
+    }
+  }
+  const bestChain = {};
+  for (const r of run.results || []) {
+    if (r.kind !== "chain" || !r.download || r.download.status !== "ok") continue;
+    const key = r.server + "|" + r.protocol;
+    const sp = r.download.speed_bps || 0;
+    if (!bestChain[key] || sp > (bestChain[key].download.speed_bps||0)) bestChain[key] = r;
+  }
+  const rows = [];
+  for (const [srv, protos] of Object.entries(byServer)) {
+    for (const [proto, direct] of Object.entries(protos)) {
+      const bc = bestChain[srv + "|" + proto];
+      const ds = direct.download && direct.download.status === "ok" ? direct.download.speed_bps : 0;
+      const cs = bc ? bc.download.speed_bps : 0;
+      const verdict = cs > ds ? '<span class="ok">中继更快</span>'
+        : (cs > 0 ? '<span class="bad">直连更快</span>' : '<span class="skip">无可用中继</span>');
+      rows.push(`<tr><td>${esc(srv)} ${esc(proto)}</td>
+        <td>${fmtSpeed(ds)}</td><td>${bc ? esc(bc.name) + " " + fmtSpeed(cs) : "—"}</td>
+        <td>${verdict}</td></tr>`);
+    }
+  }
+  if (!rows.length) { $("compare").innerHTML = ""; return; }
+  $("compare").innerHTML = `<h3>直连 vs 中继（同一出口）</h3>
+    <table><thead><tr><th>出口</th><th>直连速度</th><th>最快中继链</th><th>结论</th></tr></thead>
+    <tbody>${rows.join("")}</tbody></table>`;
+}
+
+async function refreshHist() {
+  const list = await api("/api/tests");
+  $("histTable").querySelector("tbody").innerHTML = list.map(t => {
+    const s = t.summary || {};
+    const best = s.best ? esc(s.best.name) + " " + fmtSpeed(s.best.speed_bps) : "—";
+    const when = esc(t.created_at||"") + (t.elapsed_s != null ? "<br><span class='muted'>" + fmtElapsed(t.elapsed_s) + "</span>" : "");
+    return `<tr><td>${when}</td><td>${esc(t.mode)}${t.workers ? "×" + t.workers : ""}</td><td>${esc(t.status)}</td>
+      <td>${s.total??""}</td><td>${s.ok??""}</td><td>${s.skipped??""}</td><td>${s.failed??""}</td>
+      <td>${best}</td><td><button onclick="loadRun('${t.id}')">查看</button></td></tr>`;
+  }).join("");
+}
+async function loadRun(id) {
+  const run = await api("/api/test/" + id);
+  renderRun(run);
+}
+refreshSubs();
+refreshHist();
+</script>
+</body>
+</html>

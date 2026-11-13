@@ -6,16 +6,28 @@ file, watch progress in the console, download the result.
 
 Port: **5850**, HTTPS only. **https://apple.su7.dpdns.org:5850**
 
-## Access code
+## Login (username + password)
 
-All pages and API calls need the access code (set 2026-11-07).
-Browser: open the homepage, enter the code once, it stays logged
-in for 30 days (HttpOnly cookie). API: send header
-`X-Access-Code: <code>` with every request. The code itself is
-never stored in plain text in the project — only its SHA-256
-(`config.py: ACCESS_CODE_HASH`); to change it, compute a new hash
-with `python3 -c "import hashlib; print(hashlib.sha256(b'mac-compute:NEWCODE').hexdigest())"`,
-replace the hash, restart. `/health` is public (no code needed).
+All pages and API calls need the username + password.
+First visit to the homepage shows a setup form (username +
+password, at least 8 characters, 12+ suggested); the same login
+also works for the router status dashboard. Browser: log in once,
+it stays logged in for 30 days (HttpOnly, Secure session cookie
+holding a random token, never the password). API: send HTTP Basic
+Auth (`-u username:password`) or header `X-Access-Code: <password>`
+with every request. The password is never stored in plain text —
+only its salted PBKDF2 hash in `auth.json` (mode 600, written by
+`auth_store.py`). `/health` is public (no login needed).
+
+## GitHub 上传
+
+控制台里有 **GitHub 上传** 页（`/github`，同样需要登录）：
+填 GitHub 账号、仓库名、token、分支、公开/私有，保存后告诉
+Muse，Muse 会用它创建仓库、完成首次推送并开启每小时自动推送。
+Token 只保存在 Mac 的 `data/github.json`（600 权限），不会进
+代码仓库，也不会出现在聊天记录里。页面上有“验证 Token”按钮，
+可以检查 token 属于哪个账号。换账号或换 token 就回来改了保存；
+想停用就去 GitHub 上把 token 删掉（Revoke）。
 
 ## How to use (also on the homepage)
 
@@ -29,9 +41,9 @@ replace the hash, restart. `/health` is public (no code needed).
    from the console) and never blocks later tasks.
 
 ```bash
-curl -H "X-Access-Code: <code>" -F "file=@a.m4a" -F "type=asr" https://apple.su7.dpdns.org:5850/api/jobs
-curl -H "X-Access-Code: <code>" -F "file=@v.mp4" -F "type=video_transcode" https://apple.su7.dpdns.org:5850/api/jobs
-curl -H "X-Access-Code: <code>" -F "file=@shots.zip" -F "type=image_select" -F 'params={"top_n":10}' https://apple.su7.dpdns.org:5850/api/jobs
+curl -u username:password -F "file=@a.m4a" -F "type=asr" https://cp.zin7.de:5850/api/jobs
+curl -u username:password -F "file=@v.mp4" -F "type=video_transcode" https://cp.zin7.de:5850/api/jobs
+curl -u username:password -F "file=@shots.zip" -F "type=image_select" -F 'params={"top_n":10}' https://cp.zin7.de:5850/api/jobs
 ```
 
 ## System stats (built in, no extra service)
@@ -43,7 +55,7 @@ plus three history charts (15min / 1h / 6h / 24h / 7d / 30d); grey bands mark
 when a job was running, so a spike can be matched to the task that
 caused it. The **实时** button switches to a live view: samples every
 5 seconds (in-memory ring buffer, last 15 min, not stored) and refreshes
-every 5 seconds. API (same access code): `GET /api/stats?hours=24`,
+every 5 seconds. API (same login): `GET /api/stats?hours=24`,
 `GET /api/stats/live`.
 
 ## ASR model cache

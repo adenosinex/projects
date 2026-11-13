@@ -1,0 +1,6 @@
+Flask>=3.1,<4
+SQLAlchemy>=2.0,<3
+tqdm>=4.66,<5
+jieba>=0.42.1,<1
+requests>=2.31,<3
+p115client==0.0.9.7.2

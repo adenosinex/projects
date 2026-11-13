@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#e3e6eb">
+    <title>Localdy · 本地视频，随心看</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <script src="/static/theme.js"></script>
+    <link rel="stylesheet" href="/static/app.css">
+    <script defer src="/static/vendor/vue.global.prod.js"></script>
+    <script defer src="/static/vendor/axios.min.js"></script>
+    <script defer src="/static/player.js"></script>
+    <script defer src="/static/ambient.js"></script>
+    <script defer src="/static/app.js"></script>
+</head>
+<body>
+<div id="app" v-cloak>
+    <div class="app-shell">
+        <aside class="sidebar" :inert="modalOpen">
+            <a class="brand" href="/" aria-label="Localdy 首页"><span class="brand-mark"><app-icon name="play" ></app-icon></span><span>localdy<span class="brand-dot">.</span></span></a>
+            <div class="sidebar-caption">你的私人放映室</div>
+            <nav class="library-nav" aria-label="视频库">
+                <button :class="{ selected: libraryTab === 'all' }" @click="selectLibrary('all')"><app-icon name="discover" ></app-icon><span>随心看</span><span class="nav-indicator"></span></button>
+                <button :class="{ selected: libraryTab === 'liked' }" @click="selectLibrary('liked')"><app-icon name="heart" ></app-icon><span>我的喜欢</span></button>
+                <button :class="{ selected: libraryTab === 'unwatched' }" @click="selectLibrary('unwatched')"><app-icon name="clock" ></app-icon><span>还没看过</span></button>
+            </nav>
+            <div class="sidebar-section-label">管理视频库</div>
+            <button class="sidebar-link" @click="showConfig = true"><app-icon name="folder" ></app-icon>本地文件夹<span class="folder-count">{{ pathList.length }}</span></button>
+            <button class="sidebar-link" @click="showSearch = true"><app-icon name="sliders" ></app-icon>搜索与筛选</button>
+            <button class="sidebar-link" @click="openAppearance"><app-icon name="palette"></app-icon>外观与主题</button>
+            <div class="sidebar-bottom">
+                <div class="local-status"><span></span>从本地播放</div>
+                <!-- ★ 拆分模式：客户端状态 + 配对 + 下载 -->
+                <div v-if="splitMode" class="client-status">
+                    <div v-if="clientChecked && !clientOnline" class="client-offline">客户端未运行<br><a class="client-download-btn" :href="downloadUrl" download>下载客户端</a> <a class="client-download-btn" href="/download/localdy_client.bat" download>下载启动器</a><br>两个文件放同一文件夹，双击启动器运行，运行后刷新本页</div>
+                    <div v-else-if="clientOnline && pairingNeeded">客户端配对码：<input v-model="pairingCode" placeholder="客户端窗口里显示的配对码" @keyup.enter="savePairing"><button @click="savePairing">保存</button></div>
+                    <div v-else-if="clientOnline">客户端已连接 · <a class="client-download-btn" :href="downloadUrl" download>下载客户端</a></div>
+                </div>
+                <p>熟悉的浏览体验<br>属于你的视频收藏</p>
+                <button class="shortcut-link" @click="showHelp = true"><app-icon name="keyboard" ></app-icon>键盘快捷键</button>
+            </div>
+        </aside>
+        <main class="workspace" :inert="modalOpen">
+            <header class="topbar">
+                <div class="page-heading"><span class="mobile-brand">localdy<span>.</span></span><h1>{{ libraryHeading }}</h1><span class="library-count">{{ totalVideos.toLocaleString() }} 个视频</span></div>
+                <div class="topbar-actions">
+                    <button class="search-trigger" @click="showSearch = true" aria-label="搜索本地视频"><app-icon name="search" ></app-icon><span>搜索你的本地视频</span><kbd>/</kbd></button>
+                    <button class="icon-button appearance-trigger" @click="openAppearance" title="切换整体主题" aria-label="外观与主题"><app-icon name="palette"></app-icon></button>
+                    <button class="icon-button config-trigger" @click="showConfig = true" title="视频库设置" aria-label="视频库设置"><app-icon name="settings" ></app-icon></button>
+                </div>
+            </header>
+            <section class="viewing-area">
+                <div class="feed-header">
+                    <div class="feed-tabs" role="tablist" aria-label="浏览范围">
+                        <button role="tab" :aria-selected="libraryTab === 'all'" :class="{ active: libraryTab === 'all' }" @click="selectLibrary('all')">随心看</button>
+                        <button role="tab" :aria-selected="libraryTab === 'liked'" :class="{ active: libraryTab === 'liked' }" @click="selectLibrary('liked')">喜欢</button>
+                        <button role="tab" :aria-selected="libraryTab === 'unwatched'" :class="{ active: libraryTab === 'unwatched' }" @click="selectLibrary('unwatched')">未看</button>
+                    </div>
+                    <button class="shuffle-button" @click="shuffleVideo" :disabled="isLoading || !totalVideos" title="随机跳转"><app-icon name="shuffle" ></app-icon><span>换个开始</span></button>
+                </div>
+                <div v-if="hasFilters" class="active-filter"><app-icon name="sliders"></app-icon><span>{{ filterSummary }}</span><button @click="resetFilters">清除筛选<app-icon name="close"></app-icon></button></div>
+                <div class="player-layout">
+                    <div class="player-stage" :class="[videoClass, { 'is-paused': playback.paused, 'is-clean': cleanMode, 'has-video': state.videos.length && !isLoading }]" ref="playerStage">
+                        <div class="video-backdrop" aria-hidden="true"><canvas class="ambient-canvas" ref="ambientCanvas"></canvas><div class="ambient-wash"></div></div>
+                        <div v-if="isLoading" class="loading-screen"><span class="loading-orbit"></span><strong>正在打开你的放映室</strong><span>从本地视频库加载</span></div>
+                        <div v-else-if="!state.videos.length" class="empty-screen">
+                            <span class="empty-icon"><app-icon :name="loadError ? 'alert' : 'folder'" ></app-icon></span>
+                            <h2>{{ loadError ? '视频库暂时无法加载' : hasFilters ? '没有找到匹配的视频' : '让喜欢的视频，有自己的地方' }}</h2>
+                            <p>{{ loadError || (hasFilters ? '试试其他关键词，或清除筛选条件。' : '添加本地文件夹，就能开始沉浸浏览。') }}</p>
+                            <button class="primary-button" @click="loadError ? initialLoad() : hasFilters ? resetFilters() : showConfig = true">{{ loadError ? '重新加载' : hasFilters ? '查看全部视频' : '添加视频文件夹' }}<app-icon name="arrow-right" ></app-icon></button>
+                        </div>
+                        <template v-else>
+                            <div class="video-wrap" @click="handleStageClick" @touchstart="handleTouchStart" @touchend="handleTouchEnd" @touchcancel="cancelTouch">
+                                <video v-for="(video, index) in videoQueue" :key="video.id" :data-video-id="video.id" :src="getVideoUrl(video)"
+                                    :class="{ 'active-video': index === activeVideoIndex, 'hidden-video': index !== activeVideoIndex }"
+                                    :muted="index !== activeVideoIndex || playback.muted"
+                                    :preload="index === activeVideoIndex || index === activeVideoIndex + 1 ? 'auto' : 'metadata'"
+                                    playsinline webkit-playsinline
+                                    @loadedmetadata="onMediaEvent($event, video.id)" @loadeddata="onVideoLoaded(index)" @canplay="onVideoReady(index)"
+                                    @timeupdate="onMediaEvent($event, video.id)" @progress="onMediaEvent($event, video.id)"
+                                    @seeking="onMediaEvent($event, video.id)" @seeked="onMediaEvent($event, video.id)"
+                                    @play="onMediaEvent($event, video.id)" @pause="onMediaEvent($event, video.id)"
+                                    @playing="onMediaEvent($event, video.id)" @waiting="onMediaEvent($event, video.id)"
+                                    @ended="onEnded(video.id)" @error="onMediaError($event, video.id)"></video>
+                            </div>
+                            <div class="stage-top">
+                                <span class="source-badge"><span></span>本地视频</span>
+                                <div class="stage-top-actions">
+                                    <button v-if="playback.soundBlocked && !playback.error" class="sound-prompt" @click="enableSound"><app-icon name="volume-off" ></app-icon>点击开启声音</button>
+                                    <button class="icon-button" @click="cleanMode = !cleanMode" :title="cleanMode ? '显示视频信息（C）' : '清屏（C）'" :aria-label="cleanMode ? '显示视频信息' : '清屏'"><app-icon :name="cleanMode ? 'eye' : 'eye-off'" ></app-icon></button>
+                                </div>
+                            </div>
+                            <div v-if="playback.buffering && !playback.error" class="buffering-indicator" role="status"><span class="spinner"></span><span>正在缓冲</span></div>
+                            <button v-if="playback.paused && !playback.buffering && !playback.error" class="center-play" @click="togglePlayback" aria-label="播放视频"><app-icon name="play" ></app-icon></button>
+                            <div v-if="heartBurst" class="heart-burst"><app-icon name="heart" ></app-icon></div>
+                            <div v-if="playback.error" class="playback-error" role="alert"><app-icon name="alert" ></app-icon><h3>这个视频暂时无法播放</h3><p>{{ playback.error }}</p><div><button class="primary-button" @click="retryVideo">重试</button><button class="secondary-button" @click="nextVideo">下一个</button></div></div>
+                            <div class="video-meta" v-show="!cleanMode">
+                                <div class="video-eyebrow"><span>{{ formatSize(currentVideo.file_size) }}</span><span>·</span><span>{{ currentVideo.filename?.split('.').pop()?.toUpperCase() }}</span><span v-if="currentVideo.score === 5" class="liked-badge"><app-icon name="heart" ></app-icon>已喜欢</span></div>
+                                <div class="video-title"><template v-for="(part, pi) in titleParts" :key="pi"><span v-if="part.type === 'text'">{{ part.value }}</span><button v-else class="video-tag" @click.stop="searchByTag(part.value)">#{{ part.value }}</button></template></div>
+                                <button class="video-location" @click="toggleDetail"><app-icon name="folder" ></app-icon><span>{{ currentFolder }}</span><app-icon name="chevron-right" ></app-icon></button>
+                            </div>
+                            <div class="player-controls" @click.stop @touchstart.stop @touchend.stop>
+                                <div class="progress-control" :style="{ '--played': progressPercent + '%', '--buffered': bufferedPercent + '%' }">
+                                    <input type="range" min="0" :max="playback.duration || 1" step="0.1" :value="seekPreview ?? playback.currentTime" :disabled="!playback.duration" aria-label="播放进度"
+                                        @pointerdown="beginSeek" @pointermove="previewPointerSeek" @pointerup="finishSeek"
+                                        @pointercancel="cancelSeek" @lostpointercapture="cancelSeek" @blur="finishSeek"
+                                        @input="commitSeek" @change="commitSeek" />
+                                </div>
+                                <div class="control-row">
+                                    <div class="controls-left"><button class="icon-button" @click="togglePlayback" :aria-label="playback.paused ? '播放' : '暂停'" :title="playback.paused ? '播放（空格）' : '暂停（空格）'"><app-icon :name="playback.paused ? 'play' : 'pause'" ></app-icon></button><span class="time-label">{{ formatTime(seekPreview ?? playback.currentTime) }}<span> / {{ formatTime(playback.duration) }}</span></span></div>
+                                    <div class="controls-right">
+                                        <div class="volume-control"><button class="icon-button" @click="toggleMute" :aria-label="playback.muted ? '取消静音' : '静音'" title="静音（M）"><app-icon :name="playback.muted || !playback.volume ? 'volume-off' : 'volume'" ></app-icon></button><input type="range" min="0" max="1" step="0.05" :value="playback.volume" @input="setVolume" aria-label="音量" /></div>
+                                        <label class="speed-control" title="播放速度"><select v-model.number="playback.rate" @change="applyPlaybackPreferences" aria-label="播放速度"><option :value="0.5">0.5×</option><option :value="0.75">0.75×</option><option :value="1">1×</option><option :value="1.25">1.25×</option><option :value="1.5">1.5×</option><option :value="2">2×</option></select></label>
+                                        <button class="icon-button loop-control" :class="{ active: playback.loop }" @click="toggleLoop" :aria-pressed="playback.loop" :title="playback.loop ? '单条循环 · 点击改为自动连播' : '自动连播 · 点击改为单条循环'" aria-label="单条循环"><app-icon name="repeat" ></app-icon></button>
+                                        <button class="icon-button" @click="toggleFullscreen" title="全屏（F）" aria-label="全屏"><app-icon :name="isFullscreen ? 'minimize' : 'maximize'" ></app-icon></button>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                    <aside v-if="state.videos.length && !isLoading" class="side-actions" aria-label="视频操作">
+                        <button class="side-btn side-btn-like" :class="{ 'is-active': currentVideo.score === 5, 'is-loading': likeLoading === 5, 'is-burst': burstScore === 5, 'is-shake': shakeScore === 5 }" :disabled="likeLoading !== 0" :aria-pressed="currentVideo.score === 5" :aria-label="currentVideo.score === 5 ? '撤回喜欢' : '喜欢'" @click="likeVideo(5)" :title="currentVideo.score === 5 ? '撤回喜欢（Z）' : '喜欢（Z）'"><span class="side-btn-inner"><app-icon name="heart" ></app-icon><span v-if="likeLoading === 5" class="side-spinner"></span></span><span>{{ currentVideo.score === 5 ? '已喜欢' : '喜欢' }}</span></button>
+                        <button class="side-btn side-btn-dislike" :class="{ 'is-active': currentVideo.score === 1, 'is-loading': likeLoading === 1, 'is-burst': burstScore === 1, 'is-shake': shakeScore === 1 }" :disabled="likeLoading !== 0" :aria-pressed="currentVideo.score === 1" :aria-label="currentVideo.score === 1 ? '撤回点踩' : '点踩'" @click="likeVideo(1)" :title="currentVideo.score === 1 ? '撤回点踩（X）' : '点踩（X）'"><span class="side-btn-inner"><app-icon name="thumb-down" ></app-icon><span v-if="likeLoading === 1" class="side-spinner"></span></span><span>{{ currentVideo.score === 1 ? '已点踩' : '点踩' }}</span></button>
+                        <button class="side-btn" @click="toggleDetail" title="详情与备注" aria-label="备注"><span class="side-btn-inner"><app-icon name="note" ></app-icon></span><span>备注</span></button>
+                        <button class="side-btn" :class="{ 'is-active': showQuickTag }" @click="toggleQuickTag" title="快捷标签" aria-label="标签"><span class="side-btn-inner"><app-icon name="hash" ></app-icon></span><span>标签</span></button>
+                        <a class="side-btn download-action" :href="getVideoUrl(currentVideo)" download title="下载原始视频"><span class="side-btn-inner"><app-icon name="download" ></app-icon></span><span>下载</span></a>
+                        <div class="action-divider"></div>
+                        <div class="video-navigation"><button class="icon-button" @click="prevVideo" aria-label="上一个视频" title="上一个（↑）"><app-icon name="chevron-up" ></app-icon></button><button class="icon-button" @click="nextVideo" aria-label="下一个视频" title="下一个（↓）"><app-icon name="chevron-down" ></app-icon></button></div>
+                    </aside>
+                </div>
+                <footer class="feed-footer"><span class="browse-hint"><app-icon name="mouse" ></app-icon><span>滚轮 / ↑ ↓ 切换视频<span class="hint-divider">·</span>双击喜欢</span></span><span v-if="currentVideo.id" class="position-counter">{{ globalVideoIndex }}<span> / {{ totalVideos }}</span></span><span v-else>你的收藏，随时重逢</span></footer>
+            </section>
+        </main>
+        <div v-if="showAppearance" class="search-modal" @click.self="showAppearance = false">
+            <section class="search-modal-content appearance-modal" role="dialog" aria-modal="true" aria-labelledby="appearance-title">
+                <div class="modal-heading"><div><span class="eyebrow">APPEARANCE</span><h2 id="appearance-title">界面外观</h2></div><button class="icon-button" @click="showAppearance = false" aria-label="关闭外观设置"><app-icon name="close"></app-icon></button></div>
+                <p class="appearance-intro">亮色或全黑外观，视频区域的模糊背景随当前画面变化。</p>
+                <div class="theme-grid" role="group" aria-label="整体界面主题">
+                    <button v-for="theme in themeChoices" :key="theme.id" class="theme-card" :class="{ selected: activeTheme === theme.id }"
+                            :aria-pressed="activeTheme === theme.id" :aria-label="theme.name + '主题'" @click="setTheme(theme.id)"
+                            :style="{ '--preview-bg': theme.bg, '--preview-surface': theme.surface, '--preview-player': theme.player, '--preview-accent': theme.accent }">
+                        <span class="theme-preview" aria-hidden="true"><span class="preview-sidebar"><i></i><i></i><i></i></span><span class="preview-workspace"><span class="preview-header"></span><span class="preview-player"><span></span></span></span><span class="preview-actions"><i></i><i></i><i></i></span></span>
+                        <span class="theme-card-heading"><strong>{{ theme.name }}</strong><span v-if="activeTheme === theme.id" class="theme-selected-mark"><app-icon name="check"></app-icon></span></span>
+                        <span class="theme-description">{{ theme.description }}</span>
+                    </button>
+                </div>
+                <div class="appearance-footer"><span class="current-theme-dot"></span><span>当前：{{ currentTheme.name }}</span><button class="primary-button" @click="showAppearance = false">完成</button></div>
+            </section>
+        </div>
+        <div v-if="showDetail" class="search-modal" @click.self="showDetail = false">
+            <section class="search-modal-content detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-title">
+                <div class="modal-heading"><div><span class="eyebrow">VIDEO DETAILS</span><h2 id="detail-title">关于这个视频</h2></div><button class="icon-button" @click="showDetail = false" aria-label="关闭详情"><app-icon name="close" ></app-icon></button></div>
+                <div class="detail-filename">{{ currentVideo.filename }}</div>
+                <dl class="detail-list"><dt>文件位置</dt><dd>{{ currentVideo.detail }}</dd><dt>文件大小</dt><dd>{{ formatSize(currentVideo.file_size) }}</dd><dt>标签</dt><dd>{{ currentVideo.tags || '暂无标签' }}</dd></dl>
+                <label class="field-label">评分 <span>喜欢对应 5 分，点踩对应 1 分</span></label>
+                <div class="rating-options"><button v-for="n in 5" :key="n" :class="{ selected: currentVideo.score === n }" :disabled="!!likeLoading" @click="submitScore(n)">{{ n }} 分</button><button :disabled="!!likeLoading || !currentVideo.score" @click="submitScore(0)">清除</button></div>
+                <label class="field-label" for="video-note">我的备注</label>
+                <textarea id="video-note" v-model="noteText" class="note-textarea" rows="4" placeholder="记下想法，或用 #旅行 #日常 添加标签…" @keyup.ctrl.enter="saveNote"></textarea>
+                <p class="field-hint">Ctrl + Enter 保存。自动应用开启时，#标签会按原有逻辑写入文件名。</p>
+                <div class="note-actions"><button class="primary-button" @click="saveNote" :disabled="noteSaving">{{ noteSaving ? '保存中…' : noteSaved ? '已保存' : '保存备注' }}</button><button class="secondary-button" @click="clearNote" :disabled="noteSaving" v-if="noteText">清空</button></div>
+            </section>
+        </div>
+        <div v-if="showQuickTag" class="search-modal" @click.self="showQuickTag = false">
+            <section class="search-modal-content quick-tag-panel" role="dialog" aria-modal="true" aria-labelledby="tag-title">
+                <div class="modal-heading"><div><span class="eyebrow">QUICK TAGS</span><h2 id="tag-title">给视频一个标签</h2></div><button class="icon-button" @click="showQuickTag = false" aria-label="关闭标签"><app-icon name="close" ></app-icon></button></div>
+                <p class="field-hint">点击标签即可加入当前视频备注。</p>
+                <div class="quick-tag-panel-note" :class="{ 'is-empty': !noteText }">{{ noteText || '当前视频暂无备注' }}</div>
+                <div v-if="!historyTags.length" class="quick-tags-empty">创建第一个标签，之后可以在这里快速复用。</div>
+                <div v-else class="quick-tags-list"><button v-for="t in historyTags" :key="t" class="quick-tag-btn" :class="{ 'is-added': isTagInNote(t) }" :disabled="noteSaving" @click="quickAddTag(t)">#{{ t }}<app-icon v-if="isTagInNote(t)" name="check" ></app-icon></button></div>
+                <div class="quick-tags-input-row"><input v-model="newTagInput" class="search-input" placeholder="新标签，例如 旅行" @keyup.enter="addNewTag" /><button class="primary-button" :disabled="noteSaving" @click="addNewTag">添加</button></div>
+                <button class="text-button" @click="openFullDetail">编辑完整备注<app-icon name="arrow-right" ></app-icon></button>
+            </section>
+        </div>
+        <!-- 搜索弹窗 -->
+        <div v-if="showSearch" class="search-modal" @click.self="showSearch = false">
+            <section class="search-modal-content" role="dialog" aria-modal="true" aria-label="搜索与筛选">
+                <div class="modal-heading"><div><span class="eyebrow">FIND YOUR FAVORITES</span><h2>搜索与筛选</h2></div><button class="icon-button" @click="showSearch = false" aria-label="关闭搜索"><app-icon name="close" ></app-icon></button></div>
+
+                <input type="text" v-model="searchKeyword" placeholder="输入关键词" class="search-input" @keyup.enter="doSearch" />
+
+                <div class="filter-row">
+                    <span class="filter-label">跳转序号：</span>
+                    <div class="filter-control">
+                        <input type="number" v-model="jumpIndex" placeholder="输入序号" class="search-input jump-input" min="1" @keyup.enter="doJump" />
+                        <button class="jump-btn" @click="doJump">跳转</button>
+                    </div>
+                </div>
+
+                <div class="filter-row">
+                    <span class="filter-label">评分筛选：</span>
+                    <div class="filter-control">
+                        <select v-model="searchScore" class="search-select">
+                            <option value="0">不限</option>
+                            <option value="1">1分</option>
+                            <option value="2">2分</option>
+                            <option value="3">3分</option>
+                            <option value="4">4分</option>
+                            <option value="5">5分</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="filter-row">
+                    <span class="filter-label">观看状态：</span>
+                    <div class="filter-control">
+                        <select v-model="searchWatched" class="search-select">
+                            <option value="all">不限</option>
+                            <option value="yes">已看</option>
+                            <option value="no">未看</option>
+                            <option value="stale">最近1个月未看</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="filter-row filter-row-block">
+                    <span class="filter-label">文件大小筛选：</span>
+                    <div class="filter-control">
+                        <select v-model="sizeOperator" class="search-select size-operator">
+                            <option value="lte">≤</option>
+                            <option value="gte">≥</option>
+                            <option value="eq">=</option>
+                        </select>
+                        <input type="number" v-model="sizeValue" placeholder="MB" class="search-input size-input" min="1" max="10000" />
+                        <span class="unit">MB</span>
+                    </div>
+                    <div class="quick-size-wrap">
+                        <span class="quick-size-label">快捷筛选：</span>
+                        <div class="quick-size-list">
+                            <button @click="setQuickSize('lte', 50)" class="quick-size-btn">≤50MB</button>
+                            <button @click="setQuickSize('lte', 100)" class="quick-size-btn">≤100MB</button>
+                            <button @click="setQuickSize('lte', 200)" class="quick-size-btn">≤200MB</button>
+                            <button @click="setQuickSize('lte', 500)" class="quick-size-btn">≤500MB</button>
+                            <button @click="setQuickSize('gte', 100)" class="quick-size-btn">≥100MB</button>
+                            <button @click="setQuickSize('gte', 500)" class="quick-size-btn">≥500MB</button>
+                            <button @click="setQuickSize('gte', 1000)" class="quick-size-btn">≥1GB</button>
+                            <button @click="clearSizeFilter" class="quick-size-btn clear-btn">清除</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="search-actions">
+                    <button class="search-btn-confirm" @click="doSearch">确认搜索</button>
+                    <button class="search-btn-cancel" @click="showSearch=false">取消</button>
+                </div>
+            </section>
+        </div>
+
+        <!-- 配置弹窗 -->
+        <div v-if="showConfig" class="search-modal" @click.self="showConfig = false">
+            <div class="search-modal-content config-modal-content" role="dialog" aria-modal="true" aria-label="视频库设置">
+                <div class="modal-heading"><div><span class="eyebrow">YOUR LOCAL LIBRARY</span><h2>视频库设置</h2></div><button class="icon-button" @click="showConfig = false" aria-label="关闭设置"><app-icon name="close" ></app-icon></button></div><p class="field-hint">添加此电脑或可访问的网络共享文件夹。视频直接从原始文件播放。</p>
+                <p v-if="splitMode" class="field-hint">全局模式：服务端已索引全部视频，无需输入路径；加新文件夹用客户端命令行 --root &lt;路径&gt;。客户端下载：<a class="client-download-btn" :href="downloadUrl" download>localdy_client.py</a></p>
+                <button class="appearance-settings-link" @click="openAppearance"><app-icon name="palette"></app-icon><span>外观与主题<small>{{ currentTheme.name }} · 更换整体界面风格</small></span><app-icon name="chevron-right"></app-icon></button>
+
+                <div v-if="!splitMode" class="config-add-row">
+                    <input
+                        type="text"
+                        v-model="newPath"
+                        placeholder="本地路径，例如 D:\Videos 或网络共享路径"
+                        class="search-input config-path-input"
+                        @keyup.enter="addPath"
+                    />
+                    <button class="config-add-btn" :disabled="configBusy" @click="addPath">{{ configBusy ? '处理中…' : '添加' }}</button>
+                </div>
+
+                <div v-if="indexProgress" class="index-progress" role="status"><span>{{ indexProgress.message }}</span><progress :value="indexProgress.percent" max="100"></progress><small>{{ indexProgress.current }} / {{ indexProgress.total }} · {{ indexProgress.percent }}%</small></div><div class="config-list">
+                    <div v-if="!pathList.length" class="config-empty">
+                        暂无路径，请先添加
+                    </div>
+
+                    <div v-for="path in pathList" :key="path" class="config-item">
+                        <span class="config-path-text" :title="path">{{ path }}</span>
+                        <div v-if="!splitMode" class="config-item-actions">
+                            <button class="config-btn config-btn-index" :disabled="configBusy" @click="indexPath(path)">更新索引</button>
+                            <button class="config-btn config-btn-delete" :disabled="configBusy" @click="indexPath_del(path)">移除</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ★ 备注标签 → 文件名 -->
+                <div class="note-tags-section">
+                    <h4 class="note-tags-title">备注标签 → 文件名</h4>
+                    <div class="note-tags-hint">
+                        备注中的 <b>#tag</b>（如 <code>#旅行</code>）会被识别并追加到文件名末尾：
+                        文件改名 → 数据库同步 → 备注中该 tag 被移除。<br>
+                        <b>按原有设置自动执行</b>，自动执行有 30 分钟冷却；手动点击不受限制。
+                    </div>
+
+                    <label class="auto-apply-row">
+                        <input type="checkbox" v-model="autoApplyEnabled" />
+                        <span>自动应用（保存备注后自动改名，不弹任何提示）</span>
+                    </label>
+
+                    <div class="auto-apply-cooldown"
+                         :class="cooldownRemainSec > 0 ? 'is-cooling' : 'is-ready'">
+                        <template v-if="!autoApplyEnabled">
+                            自动应用已关闭
+                        </template>
+                        <template v-else-if="cooldownRemainSec > 0">
+                            冷却中：{{ cooldownText }} 后允许下次自动改名（手动按钮不受限）
+                        </template>
+                        <template v-else>
+                            冷却已过，下次保存备注即可自动改名
+                        </template>
+                    </div>
+
+                    <div v-if="pendingTagsLoading" class="note-tags-empty">加载中…</div>
+
+                    <div v-else-if="!pendingTags.length" class="note-tags-empty">
+                        暂无待处理的备注标签
+                    </div>
+
+                    <div v-else>
+                        <div v-for="t in pendingTags" :key="t.tag" class="note-tag-item">
+                            <div style="flex:1;min-width:0;">
+                                <div class="note-tag-name">#{{ t.tag }}</div>
+                                <div class="note-tag-preview" v-if="t.videos && t.videos.length">
+                                    例：{{ t.videos[0].filename }}
+                                </div>
+                            </div>
+                            <span class="note-tag-count">{{ t.count }} 个</span>
+                            <button class="config-btn config-btn-index"
+                                    :disabled="applyingTags"
+                                    @click="applyNoteTags([t.tag])">应用</button>
+                        </div>
+                    </div>
+
+                    <div class="note-tags-actions">
+                        <button class="config-btn config-btn-index"
+                                style="flex:1;"
+                                :disabled="applyingTags"
+                                @click="applyNoteTags(null)">
+                            {{ applyingTags ? '处理中…' : '立即应用全部' }}
+                        </button>
+                        <button class="config-btn config-btn-plain"
+                                :disabled="applyingTags"
+                                @click="loadPendingTags">
+                            刷新
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ★ 上次执行结果 -->
+                <div class="apply-report-section">
+                    <div class="apply-report-header">
+                        <h4 class="apply-report-title">上次执行结果</h4>
+                        <button v-if="lastApplyReport" class="apply-report-clear"
+                                @click="clearApplyReport">清空</button>
+                    </div>
+
+                    <div v-if="!lastApplyReport" class="apply-report-empty">
+                        暂无执行记录
+                    </div>
+
+                    <div v-else class="apply-report-box">
+                        <div class="apply-report-line">
+                            <span class="apply-report-time">{{ lastApplyReport.time }}</span>
+                            <span class="apply-report-scope">{{ lastApplyReport.scope }}</span>
+                        </div>
+
+                        <template v-if="lastApplyReport.error">
+                            <div class="apply-report-error">执行失败：{{ lastApplyReport.error }}</div>
+                        </template>
+
+                        <template v-else>
+                            <div class="apply-report-line">
+                                改名成功 <b>{{ lastApplyReport.renamed }}</b> ·
+                                跳过 <b>{{ lastApplyReport.skipped.length }}</b> ·
+                                备注更新 <b>{{ lastApplyReport.notes_updated }}</b> ·
+                                备注清空 <b>{{ lastApplyReport.notes_cleared }}</b> ·
+                                错误 <b>{{ lastApplyReport.errors.length }}</b>
+                            </div>
+
+                            <div v-if="lastApplyReport.recovered.length" class="apply-report-line apply-report-recovered">
+                                路径修复（按 hash 找回） {{ lastApplyReport.recovered.length }} 条
+                            </div>
+
+                            <div v-if="lastApplyReport.skipped.length" class="apply-report-detail">
+                                <div class="apply-report-detail-title">跳过明细：</div>
+                                <div v-for="(s, i) in lastApplyReport.skipped.slice(0, 20)" :key="i" class="apply-report-detail-row">
+                                    · {{ s.reason }}<template v-if="s.filename"> | {{ s.filename }}</template>
+                                </div>
+                                <div v-if="lastApplyReport.skipped.length > 20" class="apply-report-detail-more">
+                                    … 还有 {{ lastApplyReport.skipped.length - 20 }} 条
+                                </div>
+                            </div>
+
+                            <div v-if="lastApplyReport.errors.length" class="apply-report-detail apply-report-error-detail">
+                                <div class="apply-report-detail-title">错误明细：</div>
+                                <div v-for="(e, i) in lastApplyReport.errors.slice(0, 20)" :key="i" class="apply-report-detail-row">
+                                    · {{ e.error || JSON.stringify(e) }}
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <div class="search-actions">
+                    <button class="search-btn-cancel" @click="showConfig=false">关闭</button>
+                </div>
+            </div>
+        </div>
+
+
+        <div v-if="showHelp" class="search-modal" @click.self="showHelp = false">
+            <section class="search-modal-content help-modal" role="dialog" aria-modal="true" aria-labelledby="help-title"><div class="modal-heading"><div><span class="eyebrow">MAKE YOURSELF AT HOME</span><h2 id="help-title">更顺手的观看方式</h2></div><button class="icon-button" @click="showHelp = false" aria-label="关闭快捷键"><app-icon name="close" ></app-icon></button></div>
+                <div class="shortcut-row"><span>播放 / 暂停</span><kbd>Space</kbd></div><div class="shortcut-row"><span>上一个 / 下一个</span><span><kbd>↑</kbd> <kbd>↓</kbd></span></div><div class="shortcut-row"><span>快退 / 快进 5 秒</span><span><kbd>←</kbd> <kbd>→</kbd></span></div><div class="shortcut-row"><span>喜欢 / 撤回喜欢</span><kbd>Z</kbd></div><div class="shortcut-row"><span>点踩 / 撤回点踩</span><kbd>X</kbd></div><div class="shortcut-row"><span>静音 / 全屏 / 清屏</span><span><kbd>M</kbd> <kbd>F</kbd> <kbd>C</kbd></span></div><div class="shortcut-row"><span>搜索 / 关闭弹窗</span><span><kbd>/</kbd> <kbd>Esc</kbd></span></div><p class="field-hint">双击视频即可喜欢。手机上滑看下一个，下滑看上一个。</p>
+            </section>
+        </div>
+        <transition name="toast-fade"><div v-if="toastMsg" class="app-toast" role="status">{{ toastMsg }}</div></transition>
+    </div>
+</div>
+<noscript><div class="noscript">请启用 JavaScript 来浏览本地视频。</div></noscript>
+</body>
+</html>

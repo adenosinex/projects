@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IP 延迟测试 · zin7.de</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;max-width:860px;margin:24px auto;padding:0 16px;color:#222;background:#fafafa}
+h1{font-size:20px;margin:8px 0}
+h2{font-size:16px;margin:24px 0 8px}
+a{color:#0b5fff;text-decoration:none}
+.top{font-size:13px;color:#888}
+.top a{color:#888}
+.card{background:#fff;border:1px solid #e3e3e3;border-radius:10px;padding:16px;margin:12px 0}
+textarea{width:100%;box-sizing:border-box;min-height:110px;padding:9px;border:1px solid #ccc;border-radius:6px;font-size:14px;font-family:monospace}
+.row{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;margin-top:12px}
+.field label{display:block;font-size:13px;color:#666;margin-bottom:4px}
+.field input,.field select{padding:7px 9px;border:1px solid #ccc;border-radius:6px;font-size:14px;width:80px}
+button{padding:10px 22px;border:0;border-radius:6px;background:#0b5fff;color:#fff;font-size:15px;cursor:pointer}
+button:disabled{background:#9db9ee;cursor:default}
+button.ghost{background:#fff;color:#0b5fff;border:1px solid #0b5fff;padding:6px 12px;font-size:13px}
+.bar{height:10px;background:#eee;border-radius:5px;overflow:hidden;margin:10px 0}
+.bar>div{height:100%;background:#0b5fff;width:0%}
+.meta{font-size:14px;color:#555}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:7px 8px;border-bottom:1px solid #eee;text-align:left;white-space:nowrap}
+th{cursor:pointer;color:#444}
+td.num,th.num{text-align:right}
+.ok{color:#0a7d2c}.bad{color:#c00}.warn{color:#b26a00}
+.mono{font-family:monospace;font-size:13px}
+.hint{font-size:13px;color:#888;margin-top:8px}
+.hist{font-size:13px;color:#555}
+.hist li{margin:4px 0}
+pre{background:#f4f4f4;border:1px solid #e3e3e3;border-radius:6px;padding:10px;overflow-x:auto;font-size:13px;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="top"><a href="/">← 导航</a></div>
+<h1>IP 延迟测试</h1>
+<p class="hint">从家里（重庆移动）直接 ping 目标 IP / 域名。多线程并行测，结果按平均延迟排序。</p>
+
+<div class="card">
+  <textarea id="targets">223.5.5.5
+8.8.8.8
+1.1.1.1
+114.114.114.114
+www.google.com</textarea>
+  <div class="row">
+    <div class="field"><label>模式</label>
+      <select id="mode" style="width:110px" onchange="toggleTcp()">
+        <option value="ping">ICMP ping</option>
+        <option value="tcp">TCP 连接</option>
+      </select>
+    </div>
+    <div class="field"><label>发包数</label><input id="count" type="number" value="4" min="1" max="20"></div>
+    <div class="field"><label>超时（秒）</label><input id="timeout" type="number" value="5" min="1" max="30"></div>
+    <div class="field"><label>并发线程</label><input id="workers" type="number" value="10" min="1" max="20"></div>
+    <div class="field" id="tcpPortField" style="display:none"><label>TCP 端口</label><input id="tcpPort" type="number" value="443" min="1" max="65535"></div>
+    <div class="field" id="tcpAttField" style="display:none"><label>尝试次数</label><input id="tcpAttempts" type="number" value="3" min="1" max="10"></div>
+    <button id="startBtn" onclick="startTest()">开始测试</button>
+    <button class="ghost" onclick="clearTargets()">清空</button>
+  </div>
+  <p class="hint">每行一个 IP 或域名，也可用逗号分隔。域名先解析成 IP 再测，解析失败记为 DNS 失败。TCP 模式用于禁 ping 的主机（测 TCP 建连耗时）。</p>
+</div>
+
+<div class="card" id="progressCard" style="display:none">
+  <div class="meta" id="progressText">等待开始…</div>
+  <div class="bar"><div id="progressBar"></div></div>
+  <div class="meta" id="elapsedText"></div>
+</div>
+
+<div class="card" id="resultCard" style="display:none">
+  <h2 style="margin-top:0">结果 <span id="resultMeta" class="meta"></span></h2>
+  <table id="resultTable">
+    <thead><tr>
+      <th onclick="sortBy('target')">目标</th>
+      <th onclick="sortBy('ip')">解析 IP</th>
+      <th onclick="sortBy('status')">状态</th>
+      <th class="num" onclick="sortBy('loss_pct')">丢包</th>
+      <th class="num" onclick="sortBy('min_ms')">最小</th>
+      <th class="num" onclick="sortBy('avg_ms')">平均 ★</th>
+      <th class="num" onclick="sortBy('max_ms')">最大</th>
+    </tr></thead>
+    <tbody id="resultBody"></tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">历史记录（最近 20 次）</h2>
+  <ul class="hist" id="historyList"><li>加载中…</li></ul>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">命令行调用</h2>
+  <p class="hint">不用打开网页，直接用 curl 测。同步接口会等测完才返回完整结果；一次最多 50 个目标，同时只能跑一个测试（正在跑时返回 409）。</p>
+  <p class="mono">GET（最简单，多个 target 参数）：</p>
+  <pre>curl --max-time 120 "https://cpl.zin7.de/ping/__TOKEN__/api/ping?target=8.8.8.8&amp;target=1.1.1.1&amp;count=4&amp;workers=10"</pre>
+  <p class="mono">POST（JSON 传参，和网页版一样的字段）：</p>
+  <pre>curl --max-time 120 -X POST "https://cpl.zin7.de/ping/__TOKEN__/api/test-sync" \
+  -H "Content-Type: application/json" \
+  -d '{"targets":["8.8.8.8","1.1.1.1","223.5.5.5"],"mode":"ping","count":4,"workers":10}'</pre>
+  <p class="mono">TCP 模式（禁 ping 的主机）：</p>
+  <pre>curl --max-time 120 "https://cpl.zin7.de/ping/__TOKEN__/api/ping?target=223.5.5.5&amp;mode=tcp&amp;tcp_port=443"</pre>
+  <p class="hint">返回完整结果 JSON：run_id、status、elapsed_s、每个目标的收发包数 / 丢包率 / min / avg / max、summary。同步调用会阻塞到测完，--max-time 建议给 120 秒；token 错了返回 404。</p>
+</div>
+
+<script>
+const API = location.pathname.replace(/\/$/, '') + '/api';
+let pollTimer = null, currentRun = null, sortKey = 'avg_ms', sortAsc = true;
+let lastResults = [];
+
+function toggleTcp(){
+  const tcp = document.getElementById('mode').value === 'tcp';
+  document.getElementById('tcpPortField').style.display = tcp ? '' : 'none';
+  document.getElementById('tcpAttField').style.display = tcp ? '' : 'none';
+  document.getElementById('count').parentElement.style.display = tcp ? 'none' : '';
+}
+function clearTargets(){ document.getElementById('targets').value = ''; }
+
+async function startTest(){
+  const targets = document.getElementById('targets').value
+    .split(/[\n,]+/).map(s=>s.trim()).filter(Boolean);
+  if(!targets.length){ alert('先输入至少一个 IP 或域名'); return; }
+  const body = {
+    targets,
+    count: +document.getElementById('count').value || 4,
+    timeout: +document.getElementById('timeout').value || 5,
+    workers: +document.getElementById('workers').value || 10,
+    mode: document.getElementById('mode').value,
+    tcp_port: +document.getElementById('tcpPort').value || 443,
+    tcp_attempts: +document.getElementById('tcpAttempts').value || 3,
+  };
+  const btn = document.getElementById('startBtn');
+  btn.disabled = true;
+  const r = await fetch(API + '/test', {method:'POST',
+    headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  const j = await r.json();
+  if(!r.ok){ alert(j.error || '启动失败'); btn.disabled = false; return; }
+  currentRun = j.run_id;
+  document.getElementById('progressCard').style.display = '';
+  document.getElementById('resultCard').style.display = '';
+  lastResults = [];
+  renderResults();
+  pollTimer = setInterval(poll, 1000);
+  poll();
+}
+
+async function poll(){
+  if(!currentRun) return;
+  const r = await fetch(API + '/test/' + currentRun);
+  if(!r.ok){ clearInterval(pollTimer); return; }
+  const j = await r.json();
+  const pct = j.total ? Math.round(j.done / j.total * 100) : 0;
+  document.getElementById('progressBar').style.width = pct + '%';
+  document.getElementById('progressText').textContent =
+    (j.mode === 'tcp' ? 'TCP 模式' : 'ping 模式') + ' · ' + j.done + ' / ' + j.total +
+    '（' + j.workers + ' 线程）';
+  document.getElementById('elapsedText').textContent =
+    '已用 ' + fmtElapsed(j.elapsed_s) + (j.status === 'done' ? ' · 已完成' : ' · 进行中…');
+  lastResults = j.results || [];
+  renderResults();
+  document.getElementById('resultMeta').textContent =
+    j.status === 'done' ? ('用时 ' + fmtElapsed(j.elapsed_s)) : '';
+  if(j.status === 'done'){
+    clearInterval(pollTimer);
+    document.getElementById('startBtn').disabled = false;
+    loadHistory();
+  }
+}
+
+function fmtElapsed(s){
+  if(s == null) return '—';
+  s = Math.round(s);
+  return s >= 60 ? Math.floor(s/60) + '分' + (s%60) + '秒' : s + '秒';
+}
+function fmtMs(v){ return v == null ? '—' : v.toFixed(1) + ' ms'; }
+function statusHtml(r){
+  if(r.status === 'ok') return '<span class="ok">正常</span>';
+  if(r.status === 'dns_fail') return '<span class="bad">DNS 失败</span>';
+  if(r.status === 'unreachable') return '<span class="bad">不可达</span>';
+  if(r.status === 'timeout') return '<span class="warn">超时</span>';
+  return '<span class="warn">' + (r.detail || r.status) + '</span>';
+}
+function sortBy(key){
+  if(sortKey === key) sortAsc = !sortAsc; else { sortKey = key; sortAsc = true; }
+  renderResults();
+}
+function renderResults(){
+  const rows = lastResults.slice().sort((a,b)=>{
+    const va = a[sortKey], vb = b[sortKey];
+    if(va == null && vb == null) return 0;
+    if(va == null) return 1;
+    if(vb == null) return -1;
+    return (va < vb ? -1 : va > vb ? 1 : 0) * (sortAsc ? 1 : -1);
+  });
+  document.getElementById('resultBody').innerHTML = rows.map(r =>
+    '<tr><td class="mono">' + esc(r.target) + '</td>' +
+    '<td class="mono">' + esc(r.ip || '—') + '</td>' +
+    '<td>' + statusHtml(r) + (r.detail ? ' <span class="hint">' + esc(r.detail) + '</span>' : '') + '</td>' +
+    '<td class="num">' + (r.loss_pct == null ? '—' : r.loss_pct.toFixed(0) + '%') + '</td>' +
+    '<td class="num">' + fmtMs(r.min_ms) + '</td>' +
+    '<td class="num"><b>' + fmtMs(r.avg_ms) + '</b></td>' +
+    '<td class="num">' + fmtMs(r.max_ms) + '</td></tr>').join('');
+}
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+async function loadHistory(){
+  const r = await fetch(API + '/history');
+  const h = await r.json();
+  const el = document.getElementById('historyList');
+  if(!h.length){ el.innerHTML = '<li>暂无记录</li>'; return; }
+  el.innerHTML = h.slice().reverse().map(x => {
+    const d = new Date(x.started_at * 1000);
+    const t = d.getMonth()+1 + '月' + d.getDate() + '日 ' +
+      String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+    return '<li>' + t + ' · ' + (x.mode === 'tcp' ? 'TCP' : 'ping') +
+      ' · ' + x.targets + ' 个目标 · ' + x.ok + ' 正常 / ' + x.failed + ' 失败' +
+      ' · 最快 ' + fmtMs(x.best_avg_ms) + ' / 最慢 ' + fmtMs(x.worst_avg_ms) +
+      ' · 用时 ' + fmtElapsed(x.elapsed_s) + '</li>';
+  }).join('');
+}
+toggleTcp();
+loadHistory();
+</script>
+</body>
+</html>

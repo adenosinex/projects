@@ -1,16 +1,24 @@
 """mac-compute: FastAPI service, SQLite queue, single-node Mac compute.
 
 Clients only upload / poll / download. All compute runs here.
-Access is protected by an access code (see config.py: only its
-SHA-256 is stored). Browser users log in once on the homepage;
-API clients send header X-Access-Code with each request.
+Access is protected by a username + password (see auth_store.py:
+salted PBKDF2 hash in auth.json, mode 600, shared with the router
+status dashboard). First visit shows a setup form; after that,
+browser users log in once on the homepage (session cookie) and
+API clients send HTTP Basic Auth or header X-Access-Code carrying
+the password.
 """
+import base64
 import hashlib
 import hmac
+import secrets
 import json
+import os
 import shutil
 import threading
 import time
+import urllib.error
+import urllib.request
 import zipfile
 from pathlib import Path
 
@@ -20,53 +28,121 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 import jobs as jobstore
 import stats as sysstats
+import auth_store
 from config import (
-    ACCESS_CODE, ACCESS_CODE_HASH, APPLE_CERT_FILE, APPLE_KEY_FILE,
-    AUTH_COOKIE, CERT_FILE, HEAVY_TYPES, HOST, INPUT_DIR, KEY_FILE,
+    APPLE_CERT_FILE, APPLE_KEY_FILE,
+    AUTH_COOKIE, CERT_FILE, CP_CERT_FILE, CP_KEY_FILE, DATA, HEAVY_TYPES,
+    HOST, INPUT_DIR, KEY_FILE,
     MAX_RETRIES, OUTPUT_DIR, PORT, WORK_DIR,
 )
-from dispatch import JOB_TYPES, run_job
+from dispatch import JOB_TYPES, NO_INPUT_TYPES, run_job
 
 app = FastAPI(title="mac-compute")
 jobstore.init_db()
 sysstats.init_stats_table()
 
 
-def _auth_token(code):
-    """Cookie token for a code: HMAC-style hash, never the code itself."""
-    return hashlib.sha256(f"mac-compute:{code}".encode()).hexdigest()
+# --- Auth: username + password (auth_store.py) ---
+# Credentials live in auth.json (salted PBKDF2 hash, mode 600), shared
+# with the router status dashboard. The user creates them on first
+# visit; there is no password any more. Browser login issues a
+# random session token (in-memory, 30 days); API clients send either
+# HTTP Basic Auth (username:password) or header X-Access-Code with
+# the password (keeps existing scripts working: just update the value).
+_SESSIONS = {}  # token -> expiry epoch; both uvicorn servers share it
+SESSION_TTL = 30 * 24 * 3600
 
 
-def _code_ok(code):
-    if not code:
+def _new_session():
+    token = secrets.token_urlsafe(32)
+    _SESSIONS[token] = time.time() + SESSION_TTL
+    return token
+
+
+def _session_ok(token):
+    if not token:
         return False
-    if ACCESS_CODE and hmac.compare_digest(code, ACCESS_CODE):
-        return True
-    return hmac.compare_digest(_auth_token(code), ACCESS_CODE_HASH)
+    exp = _SESSIONS.get(token)
+    if not exp:
+        return False
+    if exp < time.time():
+        _SESSIONS.pop(token, None)
+        return False
+    return True
+
+
+def _set_session(resp):
+    resp.set_cookie(AUTH_COOKIE, _new_session(), httponly=True,
+                    secure=True, samesite="lax", path="/",
+                    max_age=SESSION_TTL)
+    return resp
 
 
 def _is_authed(request: Request):
-    # API: header X-Access-Code. Browser: login cookie.
-    # Deliberately no ?code= in URLs — the code would land in logs.
-    if _code_ok(request.headers.get("X-Access-Code", "")):
+    # 1. Session cookie (random token issued at login).
+    if _session_ok(request.cookies.get(AUTH_COOKIE, "")):
         return True
-    return hmac.compare_digest(
-        request.cookies.get(AUTH_COOKIE, ""), ACCESS_CODE_HASH)
+    # 2. HTTP Basic Auth: username:password.
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Basic "):
+        try:
+            user, _, pw = base64.b64decode(auth[6:]).decode("utf-8").partition(":")
+        except Exception:
+            user, pw = "", ""
+        if user and pw and auth_store.verify_credentials(user, pw):
+            return True
+    # 3. X-Access-Code header now carries the new password.
+    code = request.headers.get("X-Access-Code", "")
+    if code and auth_store.verify_password(code):
+        return True
+    return False
 
 
 def _require_auth(request: Request):
     if not _is_authed(request):
-        raise HTTPException(401, "access code required: header X-Access-Code")
+        if not auth_store.credentials_exist():
+            raise HTTPException(
+                401,
+                "not set up yet: open the homepage in a browser to "
+                "create a username and password")
+        raise HTTPException(
+            401,
+            "login required: HTTP Basic Auth (username:password) or "
+            "header X-Access-Code with the password")
 
+
+SETUP_HTML = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
+<title>mac-compute · 首次设置</title><style>body{font-family:sans-serif;max-width:480px;margin:4em auto;padding:0 1em}
+label{display:block;margin:12px 0 4px}input{width:100%;padding:8px;box-sizing:border-box}
+button{margin-top:16px;padding:8px 18px}</style></head><body>
+<h1>mac-compute · 首次设置</h1>
+<p>第一次使用，先创建一个用户名和密码。同一个用户名和密码也能登录路由器状态面板。</p>
+<p style="color:#c00"><!--msg--></p>
+<form method="post" action="/setup">
+<label>用户名</label>
+<input name="username" placeholder="用户名" autofocus required>
+<label>密码（至少 8 位，建议 12 位以上）</label>
+<input type="password" name="password" required>
+<label>再输一次密码</label>
+<input type="password" name="password_confirm" required>
+<button>创建并进入</button></form>
+<p style="color:#888">密码只以加盐哈希形式保存在这台 Mac 上（auth.json），不要把密码发给别人。</p>
+</body></html>"""
 
 LOGIN_HTML = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
-<title>mac-compute · 登录</title><style>body{font-family:sans-serif;max-width:480px;margin:4em auto;padding:0 1em}</style></head><body>
+<title>mac-compute · 登录</title><style>body{font-family:sans-serif;max-width:480px;margin:4em auto;padding:0 1em}
+label{display:block;margin:12px 0 4px}input{width:100%;padding:8px;box-sizing:border-box}
+button{margin-top:16px;padding:8px 18px}</style></head><body>
 <h1>mac-compute</h1>
-<p>Mac mini M4 上的算力服务，请输入访问码。</p>
+<p>Mac mini M4 上的算力服务，请输入用户名和密码。</p>
+<p style="color:#c00"><!--msg--></p>
 <form method="post" action="/login">
-<input type="password" name="code" placeholder="访问码" autofocus required>
+<label>用户名</label>
+<input name="username" placeholder="用户名" autofocus required>
+<label>密码</label>
+<input type="password" name="password" required>
 <button>进入</button></form>
-<p style="color:#888">访问码不对会回到这里。不要把访问码发给别人。</p>
+<p style="color:#888">用户名或密码不对会回到这里。不要把密码发给别人。</p>
 </body></html>"""
 
 CONSOLE_HTML = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
@@ -75,6 +151,7 @@ table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:6p
 progress{width:120px}code{background:#f0f0f0;padding:1px 4px}pre{background:#f6f6f6;padding:10px;overflow:auto}</style></head><body>
 <h1>mac-compute · Mac mini M4</h1>
 <p>所有算力都在 Mac 上，客户端只上传 / 看进度 / 下载结果。<a href="/logout">退出登录</a></p>
+<p><a href="/github">GitHub 上传</a>：把代码推到 GitHub 仓库。先在那页填账号和 token，保存后在聊天里告诉 Muse，Muse 会执行推送并开启自动推送。</p>
 
 <h2>怎么用</h2>
 <ol>
@@ -94,14 +171,17 @@ progress{width:120px}code{background:#f0f0f0;padding:1px 4px}pre{background:#f6f
 <tr><td>image_batch</td><td>图片批量压缩 / 转换</td><td>JPG 85，长边 1920，重复图跳过</td></tr>
 <tr><td>ocr</td><td>图片 / PDF 转文字</td><td>RapidOCR，中英文</td></tr>
 <tr><td>data_csv</td><td>CSV 清洗去重</td><td>去重、去空行</td></tr>
+<tr><td>vps_probe</td><td>测国外 VPS 在国内的直连访问（延迟 / 速度），不走代理</td><td>不用传文件；传 <code>{"target":"https://..."}</code>；默认 ping 4 次、超时 10 秒、下载 10MB；IPv6 延迟用 TCP 测（本机 ping6 已坏）；结果在任务 JSON 里，也有 probe.json 可下载</td></tr>
 </table>
 
 <h2>命令行也可以用</h2>
-<pre>curl -H "X-Access-Code: 访问码" -F "file=@视频.mp4" -F "type=video_transcode" https://apple.su7.dpdns.org:5850/api/jobs
-curl -H "X-Access-Code: 访问码" -F "file=@截图.zip" -F "type=image_select" -F 'params={"top_n":10}' https://apple.su7.dpdns.org:5850/api/jobs
-curl -H "X-Access-Code: 访问码" -F "file=@a.m4a" -F "file=@b.m4a" -F "file=@c.m4a" -F "type=asr_batch" https://apple.su7.dpdns.org:5850/api/jobs
-curl -H "X-Access-Code: 访问码" https://apple.su7.dpdns.org:5850/api/jobs/&lt;任务ID&gt;/download -o 结果.zip</pre>
-<p>访问地址：<code>https://apple.su7.dpdns.org:5850</code>（IPv6），Tailscale 内也可以用 <code>https://zindemac-mini.tail35e420.ts.net:5850</code>（打开会报证书名字不符，因为证书是给 apple 那个域名发的）。</p>
+<pre>curl -u 用户名:密码 -F "file=@视频.mp4" -F "type=video_transcode" https://cp.zin7.de:5850/api/jobs
+curl -H "X-Access-Code: 密码" -F "file=@截图.zip" -F "type=image_select" -F 'params={"top_n":10}' https://cp.zin7.de:5850/api/jobs
+curl -u 用户名:密码 -F "file=@a.m4a" -F "file=@b.m4a" -F "file=@c.m4a" -F "type=asr_batch" https://cp.zin7.de:5850/api/jobs
+curl -u 用户名:密码 https://cp.zin7.de:5850/api/jobs/&lt;任务ID&gt;/download -o 结果.zip</pre>
+<p>登录方式：浏览器在首页输用户名和密码；命令行用 <code>-u 用户名:密码</code>（HTTP Basic Auth），或者继续用 <code>-H "X-Access-Code: 密码"</code>（header 里放的是新密码，不是旧密码）。第一次使用先在浏览器里打开首页创建用户名和密码。</p>
+<p>登录方式：浏览器在首页输用户名和密码；命令行用 <code>-u 用户名:密码</code>（HTTP Basic Auth），或者继续用 <code>-H "X-Access-Code: 密码"</code>（header 里放的是新密码，不是旧密码）。第一次使用先在浏览器里打开首页创建用户名和密码。</p>
+<p>访问地址：<code>https://cp.zin7.de:5850</code>（IPv6），Tailscale 内也可以用 <code>https://zindemac-mini.tail35e420.ts.net:5850</code>（打开会报证书名字不符，因为证书是给 cp.zin7.de 发的）。</p>
 
 <h2>系统占用 <span id="now" style="font-size:14px;font-weight:normal"></span></h2>
 <p>每分钟采一次，保留 30 天。灰色竖条是任务运行的时间段。<span id="ranges">
@@ -184,27 +264,125 @@ loadStats(24);setInterval(()=>{if(mode==='hist')loadStats();},60000);
 </script></body></html>"""
 
 
+GITHUB_HTML = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
+<title>mac-compute · GitHub 上传</title><style>body{font-family:sans-serif;max-width:640px;margin:2em auto;padding:0 1em}
+label{display:block;margin:12px 0 4px}input,select{width:100%;padding:8px;box-sizing:border-box}
+button{margin-top:16px;padding:8px 18px}code{background:#f0f0f0;padding:1px 4px}
+.note{color:#555;font-size:14px}</style></head><body>
+<h1>GitHub 上传</h1>
+<p><a href="/">← 回控制台</a></p>
+<p id="status">正在读取当前配置……</p>
+<form id="f">
+<label>GitHub 账号</label>
+<input name="account" placeholder="cccaius 或 adenosinex" required>
+<label>仓库名</label>
+<input name="repo" value="projects" required>
+<label>Token</label>
+<input name="token" type="password" autocomplete="off" placeholder="ghp_ 开头或 github_pat_ 开头">
+<label>分支</label>
+<input name="branch" value="main" required>
+<label>公开 / 私有</label>
+<select name="visibility"><option value="public" selected>公开</option><option value="private">私有</option></select>
+<button>保存</button></form>
+<p id="msg"></p>
+<p><button id="test" type="button">验证 Token（检查属于哪个账号）</button> <span id="testmsg"></span></p>
+<h2>Token 去哪拿</h2>
+<ol>
+<li>在 GitHub 上点头像 → Settings → Developer settings → Personal access tokens → <b>Fine-grained tokens</b> → Generate new token。</li>
+<li>选 <b>Only select repositories</b>，勾上要用的仓库（如果仓库还没建，先选 All repositories，建好后再改回来；或者建好仓库再来填）。</li>
+<li>Permissions 里把 <b>Contents</b> 设为 <b>Read and write</b>，生成后复制下来。</li>
+<li>也可以用经典 token（Tokens (classic) → Generate new token (classic)，勾 <code>repo</code>），更简单，但权限是整个账号的。</li>
+</ol>
+<p class="note">Token 只保存在这台 Mac 的一个文件里（<code>data/github.json</code>，只有本机能读），不会出现在聊天记录里，也不会进代码仓库。保存后在聊天里告诉 Muse，Muse 会用它创建仓库、完成首次推送，并开启每小时自动推送。以后想换账号或换 token，回来改了保存就行；想停用就把 token 在 GitHub 上删掉（Revoke）。</p>
+<script>
+async function loadStatus(){
+  let r=await fetch('/api/github/config');if(r.status===401){location.href='/';return;}
+  let j=await r.json();
+  document.getElementById('status').textContent=j.configured?
+    ('已配置：'+j.account+' / '+j.repo+'（'+j.branch+'，'+(j.visibility==='public'?'公开':'私有')+'）· 保存于 '+j.updated_at):
+    '未配置：还没有保存过账号和 token。';
+  if(j.configured){
+    document.querySelector('[name=account]').value=j.account;
+    document.querySelector('[name=repo]').value=j.repo;
+    document.querySelector('[name=branch]').value=j.branch;
+    document.querySelector('[name=visibility]').value=j.visibility;
+    document.querySelector('[name=token]').placeholder='留空保持原来的 token';
+  }
+}
+document.getElementById('f').onsubmit=async e=>{e.preventDefault();
+  let fd=new FormData(e.target),body={};fd.forEach((v,k)=>body[k]=v);
+  let r=await fetch('/api/github/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  let j=await r.json();
+  document.getElementById('msg').textContent=r.ok?('已保存：'+j.account+' / '+j.repo+'。请在聊天里告诉 Muse 执行推送。'):('保存失败：'+(j.detail||JSON.stringify(j)));
+  loadStatus();};
+document.getElementById('test').onclick=async ()=>{
+  let r=await fetch('/api/github/test',{method:'POST'});
+  let j=await r.json();
+  document.getElementById('testmsg').textContent=r.ok?('Token 有效，属于账号 '+j.login+'。'+(j.warning?' '+j.warning:'')):('验证失败：'+(j.detail||JSON.stringify(j)));};
+loadStatus();
+</script></body></html>"""
+
+
+GITHUB_CONFIG = DATA / "github.json"
+
+
+def _load_github_config():
+    """GitHub upload config (data/github.json, mode 600). The token is
+    never returned by any endpoint and never enters the repo."""
+    if not GITHUB_CONFIG.exists():
+        return None
+    try:
+        return json.loads(GITHUB_CONFIG.read_text())
+    except Exception:
+        return None
+
+
+def _save_github_config(cfg):
+    DATA.mkdir(parents=True, exist_ok=True)
+    GITHUB_CONFIG.write_text(json.dumps(cfg, ensure_ascii=False, indent=2))
+    os.chmod(GITHUB_CONFIG, 0o600)
+
+
 @app.get("/", response_class=HTMLResponse)
 def console(request: Request):
+    if not auth_store.credentials_exist():
+        return SETUP_HTML
     if not _is_authed(request):
         return LOGIN_HTML
     return CONSOLE_HTML
 
 
+@app.post("/setup")
+def setup(username: str = Form(...), password: str = Form(...),
+          password_confirm: str = Form(...)):
+    if auth_store.credentials_exist():
+        return RedirectResponse("/", status_code=303)
+    username = (username or "").strip()
+    if not username:
+        return HTMLResponse(SETUP_HTML.replace("<!--msg-->", "用户名不能为空。"), status_code=400)
+    if password != password_confirm:
+        return HTMLResponse(SETUP_HTML.replace("<!--msg-->", "两次输入的密码不一致。"), status_code=400)
+    if len(password) < 8:
+        return HTMLResponse(SETUP_HTML.replace("<!--msg-->", "密码至少 8 位，建议 12 位以上。"), status_code=400)
+    try:
+        auth_store.create_credentials(username, password)
+    except ValueError as e:
+        return HTMLResponse(SETUP_HTML.replace("<!--msg-->", str(e)), status_code=400)
+    except RuntimeError:
+        return RedirectResponse("/", status_code=303)
+    return _set_session(RedirectResponse("/", status_code=303))
+
+
 @app.post("/login")
-def login(code: str = Form(...)):
-    if not _code_ok(code):
-        return HTMLResponse(LOGIN_HTML.replace(
-            "访问码不对会回到这里。",
-            "访问码不对，请重试。"), status_code=401)
-    resp = RedirectResponse("/", status_code=303)
-    resp.set_cookie(AUTH_COOKIE, ACCESS_CODE_HASH, httponly=True,
-                    samesite="lax", path="/", max_age=30 * 24 * 3600)
-    return resp
+def login(username: str = Form(...), password: str = Form(...)):
+    if auth_store.verify_credentials(username, password):
+        return _set_session(RedirectResponse("/", status_code=303))
+    return HTMLResponse(LOGIN_HTML.replace("<!--msg-->", "用户名或密码不对，请重试。"), status_code=401)
 
 
 @app.get("/logout")
-def logout():
+def logout(request: Request):
+    _SESSIONS.pop(request.cookies.get(AUTH_COOKIE, ""), None)
     resp = RedirectResponse("/", status_code=303)
     resp.delete_cookie(AUTH_COOKIE, path="/")
     return resp
@@ -257,9 +435,13 @@ async def create_job(request: Request, type: str = Form(...),
     # curl -F "file=@a" sends one part, the browser with multiple sends
     # several parts with the same name; FastAPI gives us a list either way.
     uploads = [uf for uf in (file or []) if uf.filename]
-    if not uploads:
+    # Most types need an input file; NO_INPUT_TYPES (e.g. vps_probe)
+    # take everything from params and need no upload.
+    if not uploads and type not in NO_INPUT_TYPES:
         raise HTTPException(400, "no file uploaded")
-    if type == "asr_batch":
+    if not uploads:
+        display = str(p.get("target") or type)[:120]
+    elif type == "asr_batch":
         display = f"{len(uploads)} files"
     else:
         if len(uploads) > 1:
@@ -328,16 +510,95 @@ def retry(job_id: str, request: Request):
     return {"id": job_id, "status": jobstore.get_job(job_id)["status"]}
 
 
+@app.get("/github", response_class=HTMLResponse)
+def github_page(request: Request):
+    if not auth_store.credentials_exist():
+        return RedirectResponse("/", status_code=303)
+    if not _is_authed(request):
+        return LOGIN_HTML
+    return GITHUB_HTML
+
+
+@app.get("/api/github/config")
+def github_config_get(request: Request):
+    _require_auth(request)
+    cfg = _load_github_config()
+    if not cfg:
+        return {"configured": False}
+    return {"configured": True, "account": cfg.get("account", ""),
+            "repo": cfg.get("repo", ""), "branch": cfg.get("branch", "main"),
+            "visibility": cfg.get("visibility", "public"),
+            "updated_at": cfg.get("updated_at", "")}
+
+
+@app.post("/api/github/config")
+async def github_config_post(request: Request):
+    _require_auth(request)
+    body = await request.json()
+    account = (body.get("account") or "").strip()
+    repo = (body.get("repo") or "").strip()
+    token = (body.get("token") or "").strip()
+    branch = (body.get("branch") or "main").strip() or "main"
+    visibility = body.get("visibility") or "public"
+    if visibility not in ("public", "private"):
+        raise HTTPException(400, "visibility must be public or private")
+    if not account or not repo:
+        raise HTTPException(400, "account and repo are required")
+    old = _load_github_config()
+    if not token:
+        # Empty token keeps the previously saved one.
+        if old and old.get("token"):
+            token = old["token"]
+        else:
+            raise HTTPException(400, "token is required")
+    if not (token.startswith("ghp_") or token.startswith("github_pat_")) or len(token) < 20:
+        raise HTTPException(400, "token should start with ghp_ or github_pat_")
+    cfg = {"account": account, "repo": repo, "token": token,
+           "branch": branch, "visibility": visibility,
+           "updated_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}
+    _save_github_config(cfg)
+    return {"ok": True, "account": account, "repo": repo,
+            "branch": branch, "visibility": visibility}
+
+
+@app.post("/api/github/test")
+def github_test(request: Request):
+    """Check the saved token against api.github.com: which account it
+    belongs to. Read-only; does not change anything."""
+    _require_auth(request)
+    cfg = _load_github_config()
+    if not cfg or not cfg.get("token"):
+        raise HTTPException(400, "no token saved yet")
+    req = urllib.request.Request(
+        "https://api.github.com/user",
+        headers={"Authorization": "Bearer " + cfg["token"],
+                 "Accept": "application/vnd.github+json",
+                 "User-Agent": "mac-compute"})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        raise HTTPException(400, "GitHub returned %s (token 无效或没有权限)" % e.code)
+    except Exception as e:
+        raise HTTPException(400, "连接 GitHub 失败：%s" % e)
+    login = data.get("login", "")
+    out = {"ok": True, "login": login}
+    if cfg.get("account") and login.lower() != cfg["account"].lower():
+        out["warning"] = "注意：token 属于 %s，和填的账号 %s 不一致" % (login, cfg["account"])
+    return out
+
+
 def _run_one_job(job):
     """Run a single job in its own thread. One failure never blocks
     the queue: retry twice, then dead-letter."""
     job_id = job["id"]
     inputs = sorted(INPUT_DIR.glob(f"{job_id}_*"))
-    if not inputs:
+    if not inputs and job["type"] not in NO_INPUT_TYPES:
         jobstore.update_job(job_id, status="failed", error="input file missing", finished_at=time.time())
         return
-    # Batch jobs get the whole input list; single-file jobs get one path.
-    src = inputs if job["type"] == "asr_batch" else inputs[0]
+    # Batch jobs get the whole input list; single-file jobs get one path;
+    # no-input types get src=None (the worker reads params only).
+    src = inputs if job["type"] == "asr_batch" else (inputs[0] if inputs else None)
     out_dir = OUTPUT_DIR / job_id
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -385,9 +646,9 @@ if __name__ == "__main__":
     threading.Thread(target=_worker_loop, daemon=True).start()
     threading.Thread(target=sysstats.collector_loop, daemon=True).start()
     threading.Thread(target=sysstats.fast_sample_loop, daemon=True).start()
-    # Prefer the apple.su7.dpdns.org cert; fall back to the Tailscale cert.
+    # Prefer the cp.zin7.de cert; fall back to apple.su7.dpdns.org, then Tailscale.
     cert_file, key_file = None, None
-    for cf, kf in ((APPLE_CERT_FILE, APPLE_KEY_FILE), (CERT_FILE, KEY_FILE)):
+    for cf, kf in ((CP_CERT_FILE, CP_KEY_FILE), (APPLE_CERT_FILE, APPLE_KEY_FILE), (CERT_FILE, KEY_FILE)):
         if cf.exists() and kf.exists():
             cert_file, key_file = cf, kf
             break

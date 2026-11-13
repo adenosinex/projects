@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sub-convert · 精选维护</title>
+<style>
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+         max-width: 1200px; margin: 0 auto; padding: 16px; color: #222; }
+  h1 { font-size: 22px; } h2 { font-size: 17px; margin-top: 28px;
+         border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+  button { padding: 7px 14px; font-size: 14px; cursor: pointer; }
+  button.primary { background: #1a73e8; color: #fff; border: none;
+    border-radius: 6px; padding: 9px 20px; }
+  button:disabled { opacity: .5; cursor: default; }
+  button.tab { border: 1px solid #ccc; background: #fff; border-radius: 6px;
+    margin-right: 8px; padding: 8px 16px; }
+  button.tab.sel { background: #1a73e8; color: #fff; border-color: #1a73e8; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border: 1px solid #ddd; padding: 5px 7px; text-align: left;
+    vertical-align: top; }
+  th { background: #f6f6f6; }
+  .ok { color: #0a7d1e; } .bad { color: #c00; } .skip { color: #888; }
+  .card { background: #f9f9f9; border: 1px solid #e3e3e3; border-radius: 8px;
+    padding: 12px; margin: 10px 0; }
+  .muted { color: #666; font-size: 13px; }
+  .feat { color: #0a7d1e; font-weight: 600; }
+  .dot-on { color: #0a7d1e; } .dot-off { color: #999; }
+</style>
+</head>
+<body>
+<h1>sub-convert · 精选维护</h1>
+<p class="muted"><a href="./">← 返回订阅转换</a></p>
+<p class="muted">每 5 分钟测一次各订阅「精选」节点的实际下载速度（不测延迟，延迟由手机端测速组负责）。
+速度低于 0.5MB/s 或探测失败记一次坏，连续两次才确认；1–2 个坏不更新订阅（手机端测速组会自动切到剩下的节点），
+3 个全坏才换替补并重写订阅。监测默认只开 vps，其他订阅需要手动开启。</p>
+
+<h2>订阅</h2>
+<div id="subTabs"></div>
+
+<div id="statusCard" class="card"></div>
+
+<h2>精选节点</h2>
+<table id="featTable">
+  <thead><tr><th>节点</th><th>整测速度</th><th>上次探测速度</th><th>探测状态</th><th>连续坏次数</th></tr></thead>
+  <tbody></tbody>
+</table>
+
+<div style="margin-top:14px">
+  <button id="probeBtn" class="primary">立即检测精选</button>
+  <button id="toggleBtn">开启监测</button>
+  <button id="refreshBtn">刷新</button>
+  <span id="probeMsg" class="muted"></span>
+</div>
+<div id="probeResult" class="card" style="display:none"></div>
+
+<script>
+const API = location.pathname.indexOf("/convert") === 0 ? "/convert-api" : "/api";
+
+async function api(path, opts) {
+  const r = await fetch(API + path, opts);
+  const t = await r.text();
+  let j = null;
+  try { j = JSON.parse(t); } catch (e) {}
+  if (!r.ok) throw new Error((j && j.detail) || t || ("HTTP " + r.status));
+  return j;
+}
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"]/g,
+    c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+}
+
+function fmtMb(mb) {
+  return (mb == null) ? "—" : mb.toFixed(1) + "MB";
+}
+
+function fmtTime(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso.replace("T", " ") + " +08:00");
+  if (isNaN(d.getTime())) return esc(iso);
+  const p = n => String(n).padStart(2, "0");
+  return p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+}
+
+let subs = [];
+let selected = "";
+
+function selectedSub() {
+  return subs.find(s => s.id === selected) || subs[0] || null;
+}
+
+function renderTabs() {
+  const el = document.getElementById("subTabs");
+  el.innerHTML = subs.map(s => {
+    const dot = s.enabled
+      ? '<span class="dot-on">●监测中</span>'
+      : '<span class="dot-off">○未监测</span>';
+    return '<button class="tab' + (s.id === selected ? " sel" : "") + '" data-sub="' + s.id + '">'
+      + esc(s.name) + " " + dot + "</button>";
+  }).join("");
+  el.querySelectorAll("[data-sub]").forEach(b => b.onclick = () => {
+    selected = b.getAttribute("data-sub");
+    document.getElementById("probeResult").style.display = "none";
+    document.getElementById("probeMsg").textContent = "";
+    render();
+  });
+}
+
+function render() {
+  renderTabs();
+  const s = selectedSub();
+  const card = document.getElementById("statusCard");
+  const tb = document.querySelector("#featTable tbody");
+  const probeBtn = document.getElementById("probeBtn");
+  const toggleBtn = document.getElementById("toggleBtn");
+  if (!s) {
+    card.textContent = "还没有订阅。";
+    tb.innerHTML = "";
+    probeBtn.disabled = true;
+    toggleBtn.disabled = true;
+    return;
+  }
+  const next = s.last_probe_at
+    ? new Date(new Date(s.last_probe_at.replace("T", " ") + " +08:00").getTime() + (s.interval_s || 300) * 1000)
+    : null;
+  const nextStr = next && !isNaN(next.getTime())
+    ? (String(next.getHours()).padStart(2, "0") + ":" + String(next.getMinutes()).padStart(2, "0") + ":" + String(next.getSeconds()).padStart(2, "0"))
+    : "—";
+  const swap = s.last_swap
+    ? "<br>上次替换：" + fmtTime(s.last_swap.swapped_at) + " → " + esc((s.last_swap.replacements || []).join("、"))
+    : "";
+  card.innerHTML = "<b>" + esc(s.name) + "</b> · "
+    + (s.enabled ? '<span class="ok">监测中</span>' : '<span class="skip">未监测</span>')
+    + "<br>上次探测：" + fmtTime(s.last_probe_at)
+    + " · 下次探测约：" + nextStr
+    + " · 每 " + (s.interval_s || 300) / 60 + " 分钟一次"
+    + "<br>坏的判定：速度 &lt; " + s.bad_threshold_mb + "MB/s 或探测失败，连续 " + s.bad_streak + " 次确认"
+    + "<br>上次发布：" + fmtTime(s.last_publish_at)
+    + " · 最近动作：" + esc(s.last_action || "—")
+    + "<br>上次整测：" + fmtTime(s.last_test_at) + swap;
+  tb.innerHTML = (s.featured || []).map(f => {
+    const st = f.confirmed_bad ? '<span class="bad">坏（已确认）</span>'
+      : f.probe_status === "bad" ? '<span class="bad">坏（1 次）</span>'
+      : f.probe_status === "good" ? '<span class="ok">好</span>'
+      : f.probe_status === "inconclusive" ? '<span class="skip">未定（端点限流）</span>'
+      : f.probe_status ? '<span class="skip">' + esc(f.probe_status) + "</span>"
+      : '<span class="muted">未探测</span>';
+    return "<tr><td>" + esc(f.name) + "</td><td>" + fmtMb(f.full_speed_mb)
+      + "</td><td>" + fmtMb(f.probe_speed_mb) + "</td><td>" + st
+      + "</td><td>" + (f.bad_count || 0) + "</td></tr>";
+  }).join("") || '<tr><td colspan="5" class="muted">还没有精选（先测速一次）。</td></tr>';
+  toggleBtn.disabled = false;
+  toggleBtn.textContent = s.enabled ? "关闭监测" : "开启监测";
+  probeBtn.disabled = !s.enabled;
+  if (!s.enabled) {
+    document.getElementById("probeMsg").textContent = "请先开启监测，再手动检测。";
+  } else if (!document.getElementById("probeMsg").dataset.busy) {
+    document.getElementById("probeMsg").textContent = "";
+  }
+}
+
+async function refresh() {
+  let data = null;
+  try { data = await api("/featured/status"); } catch (e) {
+    document.getElementById("statusCard").textContent = "加载失败：" + e.message;
+    return;
+  }
+  subs = data.subs || [];
+  if (!subs.find(s => s.id === selected)) selected = (subs[0] || {}).id || "";
+  render();
+}
+
+document.getElementById("refreshBtn").onclick = refresh;
+
+document.getElementById("toggleBtn").onclick = async () => {
+  const s = selectedSub();
+  if (!s) return;
+  const btn = document.getElementById("toggleBtn");
+  btn.disabled = true;
+  try {
+    await api("/featured/enable", { method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({sub_id: s.id, enabled: !s.enabled}) });
+  } catch (e) { alert("操作失败：" + e.message); }
+  btn.disabled = false;
+  refresh();
+};
+
+document.getElementById("probeBtn").onclick = async () => {
+  const s = selectedSub();
+  if (!s || !s.enabled) return;
+  const btn = document.getElementById("probeBtn");
+  const msg = document.getElementById("probeMsg");
+  const res = document.getElementById("probeResult");
+  btn.disabled = true;
+  msg.dataset.busy = "1";
+  msg.textContent = "检测中…（约十几秒，只测精选 3 个节点，不会整测）";
+  res.style.display = "none";
+  try {
+    const r = await api("/featured/probe", { method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({sub_id: s.id}) });
+    const rows = (r.featured || []).map(f => {
+      const sp = f.probe_speed_mb == null ? "—" : f.probe_speed_mb.toFixed(1) + "MB/s";
+      const st = f.confirmed_bad ? "坏（已确认）" : (f.probe_status === "good" ? "好" : (f.probe_status || "—"));
+      return "<tr><td>" + esc(f.name) + "</td><td>" + sp + "</td><td>" + st
+        + "</td><td>" + (f.bad_count || 0) + "</td></tr>";
+    }).join("");
+    const actionText = r.action === "published" ? "已发布替换后的精选："
+      + esc((r.new_featured || []).join("、"))
+      : r.action === "deferred" ? "整测正在跑，本次检测已跳过，稍后再试。"
+      : r.action === "no-publish" ? "未发布（不到 3 个全坏，懒加载）。手机端测速组会自动切到剩下的可用节点。"
+      : r.action === "no-replacement" ? "3 个全坏但没有可用替补，未发布。"
+      : "动作：" + esc(r.action);
+    res.innerHTML = "<b>检测完成 · " + fmtTime(r.last_probe_at) + "</b><br>" + actionText
+      + '<table style="margin-top:8px"><thead><tr><th>节点</th><th>探测速度</th><th>状态</th><th>连续坏次数</th></tr></thead><tbody>'
+      + rows + "</tbody></table>";
+    res.style.display = "block";
+    msg.textContent = "";
+  } catch (e) {
+    msg.textContent = "检测失败：" + e.message;
+  }
+  delete msg.dataset.busy;
+  btn.disabled = false;
+  refresh();
+};
+
+refresh();
+setInterval(refresh, 30000);
+</script>
+</body>
+</html>

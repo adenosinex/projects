@@ -17,19 +17,15 @@ for d in (INPUT_DIR, OUTPUT_DIR, WORK_DIR):
 DB_PATH = BASE / "jobs.db"
 HOST = os.getenv("MAC_COMPUTE_HOST", "::")  # "::" = dual-stack IPv4+IPv6
 PORT = int(os.getenv("MAC_COMPUTE_PORT", "5850"))
-ACCESS_CODE = os.getenv("MAC_COMPUTE_CODE", "")
 
-# Access code (set by user 2026-11-07). Only its SHA-256 is stored here,
-# never the code itself in plain text:
-#   python3 -c "import hashlib; print(hashlib.sha256(b'mac-compute:CODE').hexdigest())"
-# To change the code, replace the hash below and restart.
-# Env MAC_COMPUTE_CODE overrides this (operator use only).
-ACCESS_CODE_HASH = "put-your-own-sha256-here"  # generate: python3 -c "import hashlib; print(hashlib.sha256(b'mac-compute:YOUR_CODE').hexdigest())"
+# Auth: username + password via auth_store.py (auth.json).
 AUTH_COOKIE = "mc_auth"
 
-# HTTPS: primary cert is Let's Encrypt for apple.su7.dpdns.org
-# (acme.sh, HTTP-01 over public IPv6, in certs/apple.su7.dpdns.org.*).
-# Fallback is the Tailscale cert for zindemac-mini.tail35e420.ts.net.
+# HTTPS: primary cert is Let's Encrypt for cp.zin7.de
+# (acme.sh, Cloudflare DNS-01, in certs/cp.zin7.de.*).
+# Fallback is the apple.su7.dpdns.org cert (still on disk, also used
+# by sub-node :18932 and Localdy :18931), then the Tailscale cert
+# for zindemac-mini.tail35e420.ts.net.
 # Home broadband has no IPv6, so IPv6 access is via Tailscale:
 # Mac Tailscale IPv6 fd7a:115c:a1e0::7201:764a, reachable only
 # from devices on the same tailnet.
@@ -37,11 +33,14 @@ AUTH_COOKIE = "mc_auth"
 # (2409:8a60:c025:888c:487:a53d:71d0:d40f, China Mobile), kept current
 # by my_web_center's dns_extension DDNS: apple.su7.dpdns.org (AAAA)
 # -> that address. Inbound IPv6 to the Mac works (firewall off).
+# cp.zin7.de AAAA is kept current by ddns-zin7.sh (Cloudflare API).
+CP_CERT_FILE = BASE / "certs" / "cp.zin7.de.fullchain.crt"
+CP_KEY_FILE = BASE / "certs" / "cp.zin7.de.key"
 APPLE_CERT_FILE = BASE / "certs" / "apple.su7.dpdns.org.fullchain.crt"
 APPLE_KEY_FILE = BASE / "certs" / "apple.su7.dpdns.org.key"
 CERT_FILE = BASE / "certs" / "zindemac-mini.tail35e420.ts.net.crt"
 KEY_FILE = BASE / "certs" / "zindemac-mini.tail35e420.ts.net.key"
-HTTPS_URL = "https://apple.su7.dpdns.org:5850"
+HTTPS_URL = "https://cp.zin7.de:5850"
 
 # Queue: heavy tasks serial, light tasks up to 4 parallel.
 HEAVY_TYPES = {"asr", "asr_batch", "video_transcode", "video_thumbs", "face_cluster", "novel_index"}
