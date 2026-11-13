@@ -109,12 +109,15 @@ TOKEN=$($SSH_PY "$MAC_HOST" "$MAC_USER" "python3 -c \"import json; print(json.lo
 if [ -z "$TOKEN" ]; then log "ERROR: could not read GitHub token from Mac github.json"; exit 1; fi
 
 git -c user.name="zin" -c user.email="zin@zin7.de" commit -q -m "Auto-sync $(date '+%Y-%m-%d')"
-if git -c http.extraHeader="Authorization: Bearer $TOKEN" push -q origin main >> "$LOG" 2>&1; then
+# GitHub git-over-HTTPS needs Basic auth (Bearer is for the REST API only).
+# Build the header in memory; the token is never written to disk or echoed.
+AUTH=$(printf 'x-access-token:%s' "$TOKEN" | base64 | tr -d '\n')
+if git -c http.extraHeader="Authorization: Basic $AUTH" push -q origin main >> "$LOG" 2>&1; then
   log "pushed OK ($changed file(s) changed)"
 else
   log "ERROR: push failed"
-  unset TOKEN
+  unset TOKEN AUTH
   exit 1
 fi
-unset TOKEN
+unset TOKEN AUTH
 log "done"
