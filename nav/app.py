@@ -66,6 +66,8 @@ SERVICES = [
     ("proxy-test 代理测试", "/proxy-test/", "订阅节点测试：直连 / 中继、速度对比"),
     ("sub-convert 订阅转换", "/convert/", "订阅转换：每小时自动测速，延迟最低的 3 个节点进「精选」"),
     ("dy 115 视频筛选", "/dy/", "115 云端视频预筛：在线播放、打标、结算归档"),
+    ("DJI 视频压缩", "/dji/", "DJI 视频压缩：HEVC 硬件加速，上传或指定 Mac 上的路径"),
+    ("路况监测", "/traffic/", "指定路段/路线拥堵监测：实时状态、今日曲线、历史与热力图"),
 ]
 
 LANDING_HTML = """<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">

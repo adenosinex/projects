@@ -175,6 +175,36 @@ dialog{width:min(700px,calc(100vw - 30px));max-height:90dvh;padding:0;margin:aut
 @media(max-width:760px){.feed-page:has(.browser-open){--side:72px}.feed-main{padding:3px 4px}.feed-topbar{left:calc(var(--side) + 5px);right:5px;top:5px;padding:0 7px;gap:6px}.feed-topbar .feed-brand,.feed-topbar .feed-position{display:none}.feed-search{min-width:65px;max-width:none;margin:0;flex:1}.feed-top-actions{gap:5px}.rail-tools .action-circle{width:27px;height:27px}.feed-top-actions .quick-toggle{padding:4px}.feed-config summary{padding:0}.feed-top-actions>#undo-score{width:22px}}
 @media(prefers-reduced-motion:reduce){.feed-topbar,.player-controls,.video-caption,.thumbnail-button img{transition:none}}
 .video-card.current .thumbnail-button{border-color:#ff547c;box-shadow:0 0 0 1px #ff547c,0 0 18px #ff42671f}.video-card .now-playing{font-size:9px;line-height:1;left:3px;bottom:19px;padding:4px 5px;display:flex;align-items:center;gap:3px;color:#fff;background:#e33762;border-radius:4px}.now-playing:before{width:3px;height:3px;border-radius:50%;background:#fff;box-shadow:none}.video-card.visited:not(.current) .preview-count{color:#ffb5c8}
+
+/* ---- 核心流程条（2026-11-14 UI 优化）：顶部常驻，视频区为工作区 ---- */
+.feed-page{display:flex;flex-direction:column}
+.feed-page>.feed-layout{height:auto;flex:1 1 auto;min-height:0}
+#core-flow{flex:none;background:#101116;border-bottom:1px solid var(--line);padding:10px 14px 9px}
+.core-flow-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.core-url-step{flex:1 1 340px;display:flex;align-items:center;gap:8px;min-width:0}
+.core-step-num{display:inline-grid;place-items:center;width:20px;height:20px;flex:none;border-radius:50%;background:#ff4267;color:#fff;font-size:11px;font-weight:600}
+#core-url{flex:1;min-width:0;font-size:13px;padding:10px 12px}
+.core-cid{flex:none;font-size:11px;color:#9aa3b5;white-space:nowrap;font-variant-numeric:tabular-nums}
+.core-cid.has-cid{color:#8fd6a8}
+.core-flow-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.core-flow-actions .button{padding:10px 16px;font-size:13px}
+.core-flow-actions .button .core-step-num{width:17px;height:17px;font-size:10px}
+#core-flow-status{margin:8px 0 0;font-size:11px;line-height:1.7;color:#8b93a5}
+#core-flow-status.error{color:#ff9db8}
+.core-flow-counts{float:right;color:#7c879c;font-variant-numeric:tabular-nums}
+.core-flow-counts b{color:#c9d2e4;font-weight:500}
+.star-collapsible{margin-top:22px}
+.star-collapsible>summary{display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;font-weight:550;padding:4px 2px;list-style:none}
+.star-collapsible>summary::-webkit-details-marker{display:none}
+.star-collapsible>summary .star-pill{margin-left:auto}
+@media(max-width:760px){
+  #core-flow{padding:8px 10px 7px}
+  .core-url-step{flex-basis:100%}
+  .core-flow-actions{width:100%}
+  .core-flow-actions .button{flex:1;padding:10px 8px;font-size:12px}
+  #core-flow-status{font-size:10px}
+  .core-flow-counts{display:block;float:none;margin-top:2px}
+}
 </style><script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
 </head><body class="feed-page">
 <svg class="icon-defs" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
@@ -191,6 +221,13 @@ dialog{width:min(700px,calc(100vw - 30px));max-height:90dvh;padding:0;margin:aut
 <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z"/></symbol><symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></symbol><symbol id="i-edit" viewBox="0 0 24 24"><path d="m15 4 5 5M4 16 16 4a3.5 3.5 0 0 1 5 5L9 21H3Z"/></symbol>
 <symbol id="i-shuffle" viewBox="0 0 24 24"><path d="m17 3 4 4-4 4M3 7h3c4 0 8 10 12 10h3m-4-4 4 4-4 4M3 17h3c2 0 4-3 6-5s4-5 6-5h3"/></symbol><symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/></symbol>
 <symbol id="i-camera" viewBox="0 0 24 24"><path d="M3 7h4l2-3h6l2 3h4v13H3Z"/><circle cx="12" cy="13" r="4"/></symbol><symbol id="i-expand" viewBox="0 0 24 24"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></symbol><symbol id="i-up" viewBox="0 0 24 24"><path d="m6 14 6-6 6 6"/></symbol><symbol id="i-down" viewBox="0 0 24 24"><path d="m6 10 6 6 6-6"/></symbol><symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol><symbol id="i-dislike" viewBox="0 0 24 24"><path d="M17 3h4v11h-4ZM17 13l-4 8a3 3 0 0 1-3-3v-4H5a2 2 0 0 1-2-2.4l1.4-7A2 2 0 0 1 6.4 3H17"/></symbol><symbol id="i-undo" viewBox="0 0 24 24"><path d="M3 10h10a7 7 0 0 1 0 14" transform="translate(0 -4)"/><path d="m7 2-4 4 4 4"/></symbol></defs></svg>
+<section id="core-flow" aria-label="115 核心流程">
+  <div class="core-flow-row">
+    <div class="core-flow-step core-url-step"><span class="core-step-num">1</span><input id="core-url" type="text" placeholder="粘贴 115 分享链接 / 文件夹网址，例如 https://115.com/?cid=…" autocomplete="off" spellcheck="false" aria-label="115 分享链接或文件夹网址"><span class="core-cid" id="core-cid" title="待筛选目录 CID">CID：—</span></div>
+    <div class="core-flow-actions"><button class="button primary" type="button" id="core-index-btn"><span class="core-step-num">2</span>一键索引</button><button class="button primary" type="button" id="core-sync-btn"><span class="core-step-num">3</span>一键同步到云</button><button class="button" type="button" data-action="tasks" title="115 配置、结算归档、不喜欢数据、任务历史">更多设置 · 结算归档</button></div>
+  </div>
+  <p class="core-flow-status" id="core-flow-status" role="status"><span id="core-flow-status-text">粘贴 115 文件夹网址，自动提取 CID；再点「一键索引」或「一键同步到云」。</span><span class="core-flow-counts">待筛选 <b id="core-pending">—</b> · 精选 <b id="core-starred">—</b></span></p>
+</section>
 <header class="feed-topbar" id="main-tools" inert aria-hidden="true">
   <a class="feed-brand" href="#" aria-label="映选视频库"><span class="brand-mark"><svg><use href="#i-play"/></svg></span><span>映选</span><span class="brand-note">视频快速筛选</span></a>
   <form id="search-form" class="feed-search" role="search"><svg><use href="#i-search"/></svg><input id="search-input" type="search" placeholder="搜索视频名称或路径" aria-label="搜索视频" autocomplete="off" maxlength="500"><button type="button" class="icon-button" id="filter-button" aria-label="搜索配置与排序" title="搜索配置与排序"><svg><use href="#i-filter"/></svg><span id="filter-dot" class="tiny-dot" hidden></span></button></form>
@@ -214,7 +251,7 @@ dialog{width:min(700px,calc(100vw - 30px));max-height:90dvh;padding:0;margin:aut
 <dialog id="frame-dialog" class="frame-dialog" aria-labelledby="frame-title"><div class="dialog-header"><h2 id="frame-title">画面预览</h2><button id="close-frame" class="icon-button" aria-label="关闭截图"><svg><use href="#i-close"/></svg></button></div><div class="frame-image-wrap"><img id="frame-image" alt="视频截图" crossorigin="anonymous"></div><div class="frame-footer"><p id="frame-filename"></p><button id="frame-play" class="button" hidden>播放此视频</button><a id="frame-download" class="button primary" download="视频截图.jpg">保存截图</a></div></dialog>
 <dialog id="tasks-dialog" class="tasks-dialog star-page" aria-labelledby="tasks-title"><div class="dialog-header"><h2 id="tasks-title">115 云端配置与归档中心</h2><button id="close-tasks" class="icon-button" aria-label="关闭"><svg><use href="#i-close"/></svg></button></div>
 <main class="star-main">
-    <section class="star-intro"><div><span class="eyebrow">115 CLOUD · SQLITE · ARIA2</span><h1>云端预筛与归档<span class="heading-dot">.</span></h1><p>只需输入 115 Cookie、待筛选目录、精选集中目录与本地保存目录即可开始。打标后点击结算，自动保持原目录相对路径集中并推送 Aria2 下载。</p></div><span id="save-state" class="star-saved">配置已保存</span></section>
+    <section class="star-intro"><div><span class="eyebrow">115 CLOUD · SQLITE · ARIA2</span><h1>云端预筛与归档<span class="heading-dot">.</span></h1><p>粘贴 115 文件夹网址，自动提取 CID，一键索引或同步到云即可开始筛选。打标后点击结算，自动保持原目录相对路径集中并推送 Aria2 下载。</p></div><span id="save-state" class="star-saved">配置已保存</span></section>
     <section class="star-metrics" aria-label="库内与云端统计">
       <div><span>待筛选 (Pending)</span><strong id="metric-previews">—</strong><small>云端去重后待打标视频</small></div>
       <div><span>精选保留 (3%)</span><strong id="metric-viewed">—</strong><small id="metric-unseen">正在读取统计…</small></div>
@@ -262,7 +299,8 @@ dialog{width:min(700px,calc(100vw - 30px));max-height:90dvh;padding:0;margin:aut
         </section>
       </div>
     </div>
-    <section class="star-panel" aria-labelledby="dislike-heading" style="margin-top:22px"><div class="star-panel-heading"><div><span class="eyebrow">DISLIKE DATASET</span><h2 id="dislike-heading">不喜欢数据（去广告）</h2></div><span class="star-pill" id="dislike-total-pill">共 0 条</span></div>
+    <details class="star-collapsible"><summary>不喜欢数据（去广告）<span class="star-pill" id="dislike-total-pill">共 0 条</span></summary>
+    <section class="star-panel" aria-labelledby="dislike-heading"><div class="star-panel-heading"><div><span class="eyebrow">DISLIKE DATASET</span><h2 id="dislike-heading">不喜欢数据（去广告）</h2></div></div>
       <p class="subtle" style="margin-bottom:12px">按 SHA1 记录不喜欢的视频（主要是广告）。同步时自动跳过这些视频；同一视频改名后仍能命中。数据只存在本地，可导出后自行维护、再导入。</p>
       <div class="tool-buttons" style="margin-bottom:12px">
         <input id="dislike-file" type="file" accept=".txt,.json,text/plain,application/json" aria-label="不喜欢数据文件">
@@ -273,9 +311,12 @@ dialog{width:min(700px,calc(100vw - 30px));max-height:90dvh;padding:0;margin:aut
       <p class="subtle" id="dislike-import-status" hidden></p>
       <div class="star-history-scroll" style="max-height:220px;overflow:auto"><table class="star-history-table"><thead><tr><th>SHA1</th><th>名称</th><th>来源</th><th>操作</th></tr></thead><tbody id="dislike-list"><tr><td colspan="4" class="star-placeholder">暂无数据</td></tr></tbody></table></div>
     </section>
+    </details>
+    <details class="star-collapsible"><summary>任务执行历史</summary>
     <section class="star-panel history-panel" aria-labelledby="history-heading"><div class="star-panel-heading"><div><span class="eyebrow">HISTORY</span><h2 id="history-heading">任务执行历史</h2></div></div>
       <div class="star-history-scroll"><table class="star-history-table"><thead><tr><th>任务</th><th>模式</th><th>状态</th><th>进度</th><th>开始时间</th><th>操作</th></tr></thead><tbody id="task-history"><tr><td colspan="6" class="star-placeholder">暂无任务记录</td></tr></tbody></table></div>
     </section>
+    </details>
     <footer class="star-footer">115 云端预筛工作台 · p115client + SQLite + hls.js + Aria2</footer>
   </main>
 </dialog>
@@ -400,6 +441,8 @@ document.addEventListener('DOMContentLoaded', () => {
     } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
   }
   window.VideoLibraryAPI = Object.freeze({base:BASE,request:api});
+  /* 核心流程条（2026-11-14 UI 优化）：同步后刷新视频库，与顶部“同步云端”按钮一致。 */
+  window.__dyReloadGrid = () => { void Promise.all([fetchStats(), loadPage(1, 0, {autoplay:false})]); };
   const post = (path, body, options = {}) => api(path, {method:'POST', body, ...options});
   let statusTimer, undoPending = false;
   const ratingHistory = [];
@@ -1670,6 +1713,8 @@ document.addEventListener('DOMContentLoaded', () => {
   async function loadStats() {
     const data = await api('/library/stats?include_previews=1');
     $('metric-previews').textContent = number(data.pending ?? 0);
+    const corePending = $('core-pending'); if (corePending) corePending.textContent = number(data.pending ?? 0);
+    const coreStarred = $('core-starred'); if (coreStarred) coreStarred.textContent = number(data.starred ?? 0);
     $('metric-viewed').textContent = `${number(data.starred ?? 0)} / ${number(data.downloaded ?? 0)}`;
     $('metric-unseen').textContent = `总计 ${number(data.total ?? 0)} · 已淘汰 ${number(data.excluded ?? 0)} · 历史库 ${number(data.history_sha1 ?? 0)}`;
     lastStats = Date.now();
@@ -1766,6 +1811,106 @@ document.addEventListener('DOMContentLoaded', () => {
       await poll();
     } finally { setLaunchEnabled(true); }
   }
+  /* ---- 核心流程条（2026-11-14 UI 优化）：粘贴 115 网址 → 自动提取 CID → 一键索引 / 一键同步 ----
+     只复用已有接口与已有函数，不改后端：索引走已有 star 任务 sync_cloud，
+     同步走已有 POST /api/cloud/sync，保存走已有保存配置。 */
+  let pendingCoreCid = '';
+  function extractCidFromUrl(text) {
+    if (!text) return '';
+    const t = String(text).trim();
+    const param = t.match(/[?&#]cid=(\d{6,})/);
+    if (param) return param[1];
+    const digits = t.match(/(\d{15,20})/);
+    return digits ? digits[1] : '';
+  }
+  function coreCidInput() { return form.elements.namedItem('inbox_cid'); }
+  function syncCoreCidDisplay() {
+    const input = coreCidInput();
+    const cid = input ? input.value.trim() : '';
+    const chip = $('core-cid');
+    if (chip) { chip.textContent = cid ? 'CID：' + cid : 'CID：—'; chip.classList.toggle('has-cid', Boolean(cid)); }
+  }
+  function applyPendingCoreCid() {
+    if (!pendingCoreCid) return;
+    const input = coreCidInput();
+    if (input && input.value.trim() !== pendingCoreCid) {
+      input.value = pendingCoreCid;
+      input.dispatchEvent(new Event('input', {bubbles:true}));
+    }
+    pendingCoreCid = '';
+    syncCoreCidDisplay();
+  }
+  function setCoreStatus(message, isError) {
+    const el = $('core-flow-status-text');
+    if (el) el.textContent = message;
+    const bar = $('core-flow-status');
+    if (bar) bar.classList.toggle('error', Boolean(isError));
+  }
+  async function ensureConfigSaved() {
+    if (!config) {
+      setCoreStatus('正在加载 115 配置…');
+      try { await loadConfiguration(); } catch (error) { setCoreStatus('配置加载失败：' + (error.message || '请稍后重试'), true); return false; }
+      applyPendingCoreCid();
+    }
+    if (!dirty) return true;
+    setCoreStatus('正在保存配置…');
+    try {
+      const ok = await saveConfiguration();
+      if (!ok) { setCoreStatus('配置未保存（请检查表单），已取消本次操作', true); return false; }
+      return true;
+    } catch (error) { setCoreStatus('保存配置失败：' + (error.message || '请稍后重试'), true); return false; }
+  }
+  const coreUrlInput = $('core-url');
+  if (coreUrlInput) {
+    coreUrlInput.addEventListener('input', () => {
+      const value = coreUrlInput.value;
+      const cid = extractCidFromUrl(value);
+      if (cid) {
+        pendingCoreCid = cid;
+        const input = coreCidInput();
+        if (input && input.value.trim() !== cid) {
+          input.value = cid;
+          input.dispatchEvent(new Event('input', {bubbles:true}));
+        }
+        syncCoreCidDisplay();
+        setCoreStatus('已提取 CID：' + cid + '，已填入待筛选目录。点「一键索引」或「一键同步到云」开始。');
+      } else if (value.trim()) {
+        setCoreStatus('未从该网址提取到数字 CID：分享链接请先在 115 里打开，复制带 ?cid= 的文件夹网址，或直接粘贴数字 CID。', true);
+      } else {
+        setCoreStatus('粘贴 115 文件夹网址，自动提取 CID；再点「一键索引」或「一键同步到云」。');
+      }
+    });
+  }
+  $('core-index-btn')?.addEventListener('click', async () => {
+    const btn = $('core-index-btn'); if (!btn) return;
+    btn.disabled = true;
+    try {
+      if (!(await ensureConfigSaved())) return;
+      setCoreStatus('正在提交索引任务…');
+      await launch('sync_cloud', false);
+      setCoreStatus('索引任务已提交，正在后台同步 115 目录（进度见任务中心）。');
+    } catch (error) { setCoreStatus('索引任务提交失败：' + (error.message || '请稍后重试'), true); }
+    finally { btn.disabled = false; }
+  });
+  $('core-sync-btn')?.addEventListener('click', async () => {
+    const btn = $('core-sync-btn'); if (!btn) return;
+    btn.disabled = true;
+    try {
+      if (!(await ensureConfigSaved())) return;
+      setCoreStatus('正在同步到云…');
+      const res = await api('/api/cloud/sync', {body:{}});
+      setCoreStatus(`同步完成：新增待筛 ${number(res.added_pending ?? 0)}，SHA1 去重拦截 ${number(res.dedup_rejected ?? 0)}`);
+      await loadStats();
+      if (window.__dyReloadGrid) window.__dyReloadGrid();
+    } catch (error) { setCoreStatus('云端同步失败：' + (error.message || '请先配置 115 Cookie 与目录'), true); }
+    finally { btn.disabled = false; }
+  });
+  /* 核心条需要显示已保存的 CID：配置是打开任务中心时才加载的，这里提前加载一次，
+     失败也不影响页面（点核心按钮时会自动重试加载）。 */
+  loadConfiguration().then(() => { applyPendingCoreCid(); syncCoreCidDisplay(); }).catch(error => { setCoreStatus('115 配置加载失败：' + (error.message || '打开任务中心可重试'), true); });
+  /* 核心条的待筛选/精选计数：loadStats 原本只在打开任务中心时运行，这里提前跑一次
+     （只读 GET /library/stats），失败时计数保持 “—”，不影响页面。 */
+  loadStats().catch(() => {});
   document.addEventListener('click',safe(async event => {
     const dislikeRemove = event.target.closest('[data-dislike-remove]');
     if (dislikeRemove) {
@@ -1790,6 +1935,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function initialize() {
     const results = await Promise.allSettled([loadConfiguration(),loadStats(),loadDislikeData()]);
     results.forEach(result => { if (result.status === 'rejected') notify(result.reason.message,true); });
+    applyPendingCoreCid(); syncCoreCidDisplay();
     if (!config) {
       $('save-state').textContent = '配置加载失败，可点重新读取';
       $('config-fields').disabled = false;

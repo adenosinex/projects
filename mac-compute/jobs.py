@@ -32,6 +32,35 @@ def init_db():
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created_at)")
+        # output_deleted (2026-11-14): 1 once the job's output files
+        # were removed by the video-retention sweep or the disk guard.
+        # The row stays in history; only the files are gone. ALTER is
+        # a no-op if the column already exists.
+        try:
+            conn.execute("ALTER TABLE jobs ADD COLUMN output_deleted INTEGER NOT NULL DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+
+
+def list_done_with_output(types=None):
+    """Done jobs whose output files have not been removed yet, oldest
+    finished first. Used by the video-output retention sweep and the
+    disk guard. Returns dicts with id/type/finished_at/created_at."""
+    with _lock, sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        if types:
+            ph = ",".join("?" * len(types))
+            rows = conn.execute(
+                f"SELECT id, type, finished_at, created_at FROM jobs "
+                f"WHERE status='done' AND output_deleted=0 AND type IN ({ph}) "
+                f"ORDER BY finished_at ASC",
+                list(types)).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, type, finished_at, created_at FROM jobs "
+                "WHERE status='done' AND output_deleted=0 "
+                "ORDER BY finished_at ASC").fetchall()
+    return [dict(r) for r in rows]
 
 
 def create_job(job_type, filename, params):
@@ -73,6 +102,67 @@ def list_jobs(limit=50):
         d["params"] = json.loads(d["params"] or "{}")
         out.append(d)
     return out
+
+
+def count_jobs():
+    with _lock, sqlite3.connect(DB_PATH) as conn:
+        return conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+
+
+def all_job_ids():
+    """All job ids currently in the DB (used to spot orphaned files)."""
+    with _lock, sqlite3.connect(DB_PATH) as conn:
+        return set(r[0] for r in conn.execute("SELECT id FROM jobs"))
+
+
+def delete_job(job_id):
+    """Delete one job row. Refuses queued/running jobs (they may still
+    be writing files). Returns the job dict, or None if not found.
+    Raises ValueError if the job is still active. File cleanup is the
+    caller's job (see app._delete_job_files)."""
+    j = get_job(job_id)
+    if not j:
+        return None
+    if j["status"] in ("queued", "running"):
+        raise ValueError(f"job {job_id} is {j['status']}, cannot delete")
+    with _lock, sqlite3.connect(DB_PATH) as conn:
+        conn.execute("DELETE FROM jobs WHERE id=?", (job_id,))
+    return j
+
+
+def prune_history(max_jobs, max_age_days):
+    """Delete terminal jobs beyond the retention limits. Returns the
+    list of deleted job ids. Never touches queued/running jobs, so a
+    prune can never delete a job that is still working or waiting.
+    max_jobs: keep at most this many most-recent terminal jobs
+    (0 = delete all terminal jobs). max_age_days: delete terminal jobs
+    older than this (by created_at)."""
+    now = time.time()
+    with _lock, sqlite3.connect(DB_PATH) as conn:
+        ids = []
+        if max_age_days is not None and max_age_days >= 0:
+            cutoff = now - max_age_days * 86400
+            rows = conn.execute(
+                "SELECT id FROM jobs WHERE created_at < ?"
+                " AND status NOT IN ('queued','running')",
+                (cutoff,)).fetchall()
+            ids += [r[0] for r in rows]
+        if max_jobs is not None and max_jobs >= 0:
+            rows = conn.execute(
+                "SELECT id FROM jobs WHERE status NOT IN ('queued','running')"
+                " ORDER BY created_at DESC LIMIT -1 OFFSET ?",
+                (max_jobs,)).fetchall()
+            ids += [r[0] for r in rows]
+        # Dedupe, keep order (oldest first is fine for the caller).
+        seen = set()
+        deleted = []
+        for job_id in ids:
+            if job_id not in seen:
+                seen.add(job_id)
+                deleted.append(job_id)
+        for job_id in deleted:
+            conn.execute("DELETE FROM jobs WHERE id=?", (job_id,))
+    return deleted
 
 
 def update_job(job_id, **fields):

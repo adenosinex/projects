@@ -51,6 +51,47 @@ HTTPS_URL = "https://cp.zin7.de:5850"
 HEAVY_TYPES = {"asr", "asr_batch", "video_transcode", "video_thumbs", "face_cluster", "novel_index"}
 MAX_LIGHT_PARALLEL = 4
 MAX_RETRIES = 2
+
+# --- History retention: history must not grow forever ---
+# One place to change the limits. A background thread prunes once an
+# hour (and once at startup); the console also has a "清理旧历史"
+# button that runs the same prune on demand. Pruning only ever touches
+# terminal jobs (done / failed / dead / cancelled) — queued and running
+# jobs are never deleted, and neither are their files. Deleting a job
+# always removes its input files and its output directory too.
+# Current scale (2026-11-14): 750 jobs / ~15 GB, all within 7 days, so
+# the 1000-job cap deletes nothing that exists today; the bound only
+# bites once the user passes 1000 jobs. Lower this to 500 to start
+# pruning the oldest sooner.
+HISTORY_MAX_JOBS = 1000        # keep at most this many job rows (most recent)
+HISTORY_MAX_AGE_DAYS = 90      # delete jobs older than this (by created_at)
+HISTORY_PRUNE_INTERVAL_SECONDS = 3600  # background prune runs every hour
+# After one of these job types finishes, delete its uploaded input file
+# promptly: the user already has the original, the Mac copy is only a
+# working copy. The output (what the user downloads) is kept until
+# history pruning removes the job. Only applies to finished jobs;
+# failed / retried jobs keep their input so a retry can still run.
+DELETE_INPUT_AFTER_DONE_TYPES = {"video_transcode"}
+
+# --- Aggressive cleanup of large job FILES (job records are kept) ---
+# Video compression outputs are big and pile up fast: a finished
+# transcode's output file is only kept VIDEO_OUTPUT_RETENTION_DAYS
+# after the job finishes (the job record stays in history; only the
+# file goes, and the row is marked output_deleted so the UI shows it
+# as removed instead of a broken download link). Download within the
+# grace period. Failed jobs are not touched here (their input is kept
+# for retry, and they have no finished output to clean).
+VIDEO_OUTPUT_RETENTION_DAYS = 3
+VIDEO_OUTPUT_RETENTION_TYPES = {"video_transcode"}
+# Disk guard: if data/ grows past DATA_DIR_MAX_GB, or the disk's free
+# space falls below DISK_FREE_MIN_GB, the guard deletes finished-job
+# output files until usage is back under both limits — video outputs
+# first (oldest finished first), then other finished jobs' outputs
+# (largest first). Job records are NEVER deleted by the guard; only
+# files. Current disk (2026-11-14): 228 GB total, 77 GB free, data/
+# 15 GB, so neither limit bites today.
+DATA_DIR_MAX_GB = 30
+DISK_FREE_MIN_GB = 20
 # Experiment 2026-11-07 VERDICT: 2-way parallel gave NO gain (two 830s jobs
 # took 103s+104s each, 108s wall vs 55s+55s=110s serial) — reverted to 1.
 # MLX streams serialize on the Apple GPU; batching would help, separate

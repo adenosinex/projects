@@ -11,6 +11,7 @@ the password.
 import base64
 import hashlib
 import hmac
+import re
 import secrets
 import json
 import os
@@ -31,9 +32,14 @@ import stats as sysstats
 import auth_store
 from config import (
     APPLE_CERT_FILE, APPLE_KEY_FILE,
-    AUTH_COOKIE, CERT_FILE, CP_CERT_FILE, CP_KEY_FILE, DATA, HEAVY_TYPES,
+    AUTH_COOKIE, CERT_FILE, CP_CERT_FILE, CP_KEY_FILE, DATA,
+    DATA_DIR_MAX_GB, DELETE_INPUT_AFTER_DONE_TYPES, DISK_FREE_MIN_GB,
+    HEAVY_TYPES, HISTORY_MAX_AGE_DAYS, HISTORY_MAX_JOBS,
+    HISTORY_PRUNE_INTERVAL_SECONDS,
     HOST, INPUT_DIR, KEY_FILE,
-    MAX_RETRIES, OUTPUT_DIR, PORT, WORK_DIR,
+    MAX_RETRIES, OUTPUT_DIR, PORT,
+    VIDEO_OUTPUT_RETENTION_DAYS, VIDEO_OUTPUT_RETENTION_TYPES,
+    WORK_DIR,
 )
 from dispatch import JOB_TYPES, NO_INPUT_TYPES, run_job
 
@@ -157,7 +163,7 @@ progress{width:120px}code{background:#f0f0f0;padding:1px 4px}pre{background:#f6f
 <ol>
 <li><b>选类型、传文件、提交。</b>只传必要的文件就行，参数都有默认值，不想调就不用填。</li>
 <li><b>等进度条走完。</b>重任务（转写、转码）一次只跑一个，轻任务最多 4 个并行；下一个任务可以提前上传，不用等上一个跑完。</li>
-<li><b>点“下载”拿结果。</b>结果是一个 zip，里面是处理好的文件和报告。</li>
+<li><b>点“下载”拿结果。</b>结果是一个 zip，里面是处理好的文件和报告。视频转码的成品只保留 3 天，记得及时下载。</li>
 </ol>
 <p>任务失败会自动重试 2 次，第 3 次失败会进死信，不会卡住后面的任务，死信可以点“重试”。进行中的任务可以点“取消”。</p>
 
@@ -212,12 +218,17 @@ curl -u 用户名:密码 https://cp.zin7.de:5850/api/jobs/&lt;任务ID&gt;/downl
 <input name="params" placeholder='{"top_n":10}' size="20">
 <button>提交任务</button></form>
 <p id="msg"></p>
-<h2>任务</h2><table><tr><th>ID</th><th>类型</th><th>文件</th><th>状态</th><th>进度</th><th>信息</th><th>操作</th></tr><tbody id="tb"></tbody></table>
+<h2>任务</h2>
+<p><button onclick="pruneHist()">清理旧历史</button> <span id="pruneMsg"></span></p>
+<p style="color:#888">历史最多保留 1000 条 / 90 天，超出的每小时自动清理一次；“清理旧历史”是立即执行一次。删除任务会同时删掉它的输入和输出文件，删了就找不回来了。进行中或排队中的任务不能删。视频成品（video_transcode）完成 3 天后自动删除，只留任务记录；磁盘紧张时（data/ 超过 30 GB 或剩余空间不足 20 GB）优先清理视频成品，仍不足时按大小清理其他已完成任务的输出文件。</p>
+<table><tr><th>ID</th><th>类型</th><th>文件</th><th>状态</th><th>进度</th><th>信息</th><th>操作</th></tr><tbody id="tb"></tbody></table>
 <script>
 async function load(){let r=await fetch('/api/jobs');if(r.status===401){location.href='/';return;}let j=await r.json();
-document.getElementById('tb').innerHTML=j.map(x=>`<tr><td>${x.id}</td><td>${x.type}</td><td>${x.filename}</td><td>${x.status}</td><td><progress value="${x.progress}" max="1"></progress> ${Math.round(x.progress*100)}%</td><td>${x.message||''} ${x.error||''}</td><td>${x.status==='done'?`<a href="/api/jobs/${x.id}/download">下载</a>`:''} ${['failed','dead'].includes(x.status)?`<button onclick="retry('${x.id}')">重试</button>`:''} ${['queued','running'].includes(x.status)?`<button onclick="cancel('${x.id}')">取消</button>`:''}</td></tr>`).join('');}
+document.getElementById('tb').innerHTML=j.map(x=>`<tr><td>${x.id}</td><td>${x.type}</td><td>${x.filename}</td><td>${x.status}</td><td><progress value="${x.progress}" max="1"></progress> ${Math.round(x.progress*100)}%</td><td>${x.message||''} ${x.error||''}</td><td>${x.status==='done'?(x.output_deleted?'输出已清理':`<a href="/api/jobs/${x.id}/download">下载</a>`):''} ${['failed','dead'].includes(x.status)?`<button onclick="retry('${x.id}')">重试</button>`:''} ${['queued','running'].includes(x.status)?`<button onclick="cancel('${x.id}')">取消</button>`:''} ${['done','failed','dead','cancelled'].includes(x.status)?`<button onclick="delJob('${x.id}')">删除</button>`:''}</td></tr>`).join('');}
 async function retry(id){await fetch(`/api/jobs/${id}/retry`,{method:'POST'});load();}
 async function cancel(id){await fetch(`/api/jobs/${id}/cancel`,{method:'POST'});load();}
+async function delJob(id){if(!confirm('删除这个任务？它的输入和输出文件也会一起删掉，删了就找不回来了。'))return;let r=await fetch('/api/jobs/'+id,{method:'DELETE'});let j=await r.json();if(!r.ok){alert('删除失败：'+(j.detail||JSON.stringify(j)));return;}load();}
+async function pruneHist(){if(!confirm('按保留规则清理旧历史（最多 1000 条 / 90 天；视频成品只保留 3 天）？超出的任务和它们的文件会被删掉。'))return;let r=await fetch('/api/jobs/prune',{method:'POST'});let j=await r.json();document.getElementById('pruneMsg').textContent=r.ok?('已清理 '+j.deleted_jobs+' 个任务，释放 '+(j.freed_bytes/1048576).toFixed(1)+' MB'+(j.video_outputs_removed?('，视频成品 '+j.video_outputs_removed+' 个'):'' )+(j.guard_triggered?('，磁盘保护清理 '+j.guard_removed_jobs+' 个'):'')):('清理失败：'+(j.detail||JSON.stringify(j)));load();}
 document.getElementById('f').onsubmit=async e=>{e.preventDefault();let r=await fetch('/api/jobs',{method:'POST',body:new FormData(e.target)});let j=await r.json();document.getElementById('msg').textContent=r.ok?('已提交 '+j.id):('失败 '+JSON.stringify(j));load();};
 setInterval(load,3000);load();
 let curHours=24, mode='hist', liveTimer=null;
@@ -418,6 +429,278 @@ def get_stats_live(request: Request):
     return {"points": points, "latest": points[-1] if points else None}
 
 
+# --- History deletion + retention (history must not grow forever) ---
+_HEX16 = re.compile(r"^[0-9a-f]{16}$")  # job ids are uuid4().hex[:16]
+
+
+def _rm_file(p):
+    """Unlink one file; returns (1, size) or (0, 0). Never raises."""
+    try:
+        if p.is_file():
+            size = p.stat().st_size
+            p.unlink()
+            return 1, size
+    except OSError:
+        pass
+    return 0, 0
+
+
+def _rm_tree(d):
+    """Remove one directory tree; returns (files_removed, bytes_freed)."""
+    try:
+        if d.is_dir():
+            n, b = 0, 0
+            for q in d.rglob("*"):
+                if q.is_file():
+                    try:
+                        b += q.stat().st_size
+                    except OSError:
+                        pass
+                    n += 1
+            shutil.rmtree(d)
+            return n, b
+    except OSError:
+        pass
+    return 0, 0
+
+
+def _delete_job_files(job_id):
+    """Remove a job's input files, output dir, and work files. Returns
+    (files_removed, bytes_freed). Only touches paths directly under the
+    service's own data dirs, and only for a well-formed job id, so a
+    weird id can never escape onto the rest of the disk. Missing files
+    are fine (another thread may have removed them already)."""
+    if not _HEX16.match(job_id or ""):
+        return 0, 0
+    removed, freed = 0, 0
+    for p in INPUT_DIR.glob(f"{job_id}_*"):
+        if p.parent == INPUT_DIR:
+            n, b = _rm_file(p)
+            removed += n
+            freed += b
+    out_dir = OUTPUT_DIR / job_id
+    if out_dir.parent == OUTPUT_DIR:
+        n, b = _rm_tree(out_dir)
+        removed += n
+        freed += b
+    for p in WORK_DIR.glob(f"{job_id}*"):
+        if p.parent == WORK_DIR:
+            if p.is_file():
+                n, b = _rm_file(p)
+            else:
+                n, b = _rm_tree(p)
+            removed += n
+            freed += b
+    return removed, freed
+
+
+def _cleanup_orphan_files():
+    """Remove input files / output dirs whose job id has no DB row (left
+    behind by an earlier DB state). A file can only be an orphan: rows
+    are created before files are written, and a live job always has a
+    row. Returns (files_removed, bytes_freed, orphan_ids)."""
+    ids = jobstore.all_job_ids()
+    removed, freed = 0, 0
+    orphans = set()
+    for p in INPUT_DIR.iterdir():
+        job_id = p.name.split("_", 1)[0]
+        if p.is_file() and _HEX16.match(job_id) and job_id not in ids:
+            n, b = _rm_file(p)
+            removed += n
+            freed += b
+            if n:
+                orphans.add(job_id)
+    for d in OUTPUT_DIR.iterdir():
+        if d.is_dir() and _HEX16.match(d.name) and d.name not in ids:
+            n, b = _rm_tree(d)
+            removed += n
+            freed += b
+            if n or not d.exists():
+                orphans.add(d.name)
+    for p in WORK_DIR.iterdir():
+        job_id = p.name.split("_", 1)[0]
+        if _HEX16.match(job_id) and job_id not in ids:
+            if p.is_file():
+                n, b = _rm_file(p)
+            else:
+                n, b = _rm_tree(p)
+            removed += n
+            freed += b
+            if n:
+                orphans.add(job_id)
+    return removed, freed, sorted(orphans)
+
+
+def _output_dir_size(job_id):
+    """Total bytes of a job's output directory (0 if missing)."""
+    out_dir = OUTPUT_DIR / job_id
+    if not out_dir.is_dir():
+        return 0
+    total = 0
+    for q in out_dir.rglob("*"):
+        if q.is_file():
+            try:
+                total += q.stat().st_size
+            except OSError:
+                pass
+    return total
+
+
+def _remove_job_output(job_id, reason):
+    """Delete one finished job's OUTPUT files only (input files and
+    the DB row are untouched). Marks the row output_deleted=1 so the
+    UI shows it as removed instead of a broken download link.
+    Returns (files_removed, bytes_freed). Never raises. Only touches
+    the job's own output directory."""
+    if not _HEX16.match(job_id or ""):
+        return 0, 0
+    n, b = _rm_tree(OUTPUT_DIR / job_id)
+    if n:
+        try:
+            jobstore.update_job(job_id, output_deleted=1)
+        except Exception:
+            pass
+        print(f"[cleanup] removed output of job {job_id}: {n} files, "
+              f"{b / 1048576:.1f} MB ({reason})", flush=True)
+    return n, b
+
+
+def _prune_video_outputs():
+    """Short retention for video outputs: a finished video_transcode
+    job's output files are deleted VIDEO_OUTPUT_RETENTION_DAYS after
+    the job finishes. The job record stays in history; only the files
+    go. Returns (jobs_removed, files_removed, bytes_freed)."""
+    cutoff = time.time() - VIDEO_OUTPUT_RETENTION_DAYS * 86400
+    jobs = files = freed = 0
+    for j in jobstore.list_done_with_output(VIDEO_OUTPUT_RETENTION_TYPES):
+        done_at = j.get("finished_at") or j.get("created_at") or 0
+        if done_at and done_at < cutoff:
+            n, b = _remove_job_output(
+                j["id"], f"video output older than {VIDEO_OUTPUT_RETENTION_DAYS}d")
+            if n:
+                jobs += 1
+                files += n
+                freed += b
+    return jobs, files, freed
+
+
+def _disk_usage():
+    """(data_dir_GB, disk_free_GB): size of the service's data dir and
+    free space on its disk."""
+    total = 0
+    for dp, _, fs in os.walk(DATA):
+        for f in fs:
+            try:
+                total += os.path.getsize(os.path.join(dp, f))
+            except OSError:
+                pass
+    try:
+        free = shutil.disk_usage(DATA).free
+    except OSError:
+        free = 0
+    return total / 1073741824, free / 1073741824
+
+
+def _enforce_disk_guard():
+    """Disk guard: if data/ is over DATA_DIR_MAX_GB or the disk's free
+    space is under DISK_FREE_MIN_GB, delete finished-job output files
+    until both are back under the limits — video outputs first
+    (oldest finished first), then other finished jobs' outputs
+    (largest first). Job records are never deleted; queued/running
+    jobs and failed jobs' inputs are never touched. Every deletion is
+    logged with the job id and bytes freed. Returns a result dict."""
+    data_gb, free_gb = _disk_usage()
+    res = {"triggered": False, "video_removed": 0, "other_removed": 0,
+           "guard_files": 0, "freed_bytes": 0,
+           "data_gb": round(data_gb, 2), "disk_free_gb": round(free_gb, 2)}
+    if data_gb <= DATA_DIR_MAX_GB and free_gb >= DISK_FREE_MIN_GB:
+        return res
+    res["triggered"] = True
+    print(f"[guard] data/ {data_gb:.1f} GB (max {DATA_DIR_MAX_GB}), "
+          f"disk free {free_gb:.1f} GB (min {DISK_FREE_MIN_GB}) — pruning outputs",
+          flush=True)
+    # Freeing X GB shrinks data/ by X and grows disk free by X (same
+    # volume), so freeing max(over_data, over_free) fixes both.
+    need_gb = max(0.0, data_gb - DATA_DIR_MAX_GB,
+                  DISK_FREE_MIN_GB - free_gb)
+    freed = 0
+    # Stage 1: video outputs, oldest finished first.
+    for j in jobstore.list_done_with_output(VIDEO_OUTPUT_RETENTION_TYPES):
+        if freed / 1073741824 >= need_gb:
+            break
+        n, b = _remove_job_output(j["id"], "disk guard: video output")
+        if n:
+            res["video_removed"] += 1
+            res["guard_files"] += n
+            freed += b
+    # Stage 2: other finished jobs' outputs, largest first.
+    if freed / 1073741824 < need_gb:
+        others = [j for j in jobstore.list_done_with_output()
+                  if j["type"] not in VIDEO_OUTPUT_RETENTION_TYPES]
+        others.sort(key=lambda j: -_output_dir_size(j["id"]))
+        for j in others:
+            if freed / 1073741824 >= need_gb:
+                break
+            n, b = _remove_job_output(j["id"], "disk guard: other finished output")
+            if n:
+                res["other_removed"] += 1
+                res["guard_files"] += n
+                freed += b
+    res["freed_bytes"] = freed
+    data_gb2, free_gb2 = _disk_usage()
+    res["data_gb"] = round(data_gb2, 2)
+    res["disk_free_gb"] = round(free_gb2, 2)
+    print(f"[guard] freed {freed / 1048576:.1f} MB; data/ now {data_gb2:.1f} GB, "
+          f"disk free {free_gb2:.1f} GB", flush=True)
+    return res
+
+
+def _run_prune(max_jobs=HISTORY_MAX_JOBS, max_age_days=HISTORY_MAX_AGE_DAYS):
+    """One retention pass: delete terminal jobs beyond the limits, then
+    their files, then orphaned files; then the short video-output
+    retention; then the disk guard. Returns a result dict. Never
+    deletes queued/running jobs (enforced in jobstore.prune_history),
+    and never deletes job records except the ones beyond the history
+    limits — the video sweep and the guard only remove output FILES."""
+    deleted_ids = jobstore.prune_history(max_jobs, max_age_days)
+    files, freed = 0, 0
+    for job_id in deleted_ids:
+        n, b = _delete_job_files(job_id)
+        files += n
+        freed += b
+    on, ob, orphans = _cleanup_orphan_files()
+    vjobs, vfiles, vfreed = _prune_video_outputs()
+    guard = _enforce_disk_guard()
+    return {
+        "deleted_jobs": len(deleted_ids),
+        "deleted_files": files + on + vfiles + guard["guard_files"],
+        "freed_bytes": freed + ob + vfreed + guard["freed_bytes"],
+        "orphan_jobs": orphans,
+        "job_ids": deleted_ids,
+        "video_outputs_removed": vjobs,
+        "video_output_freed_bytes": vfreed,
+        "guard_triggered": guard["triggered"],
+        "guard_removed_jobs": guard["video_removed"] + guard["other_removed"],
+        "guard_freed_bytes": guard["freed_bytes"],
+        "data_gb": guard["data_gb"],
+        "disk_free_gb": guard["disk_free_gb"],
+    }
+
+
+def _prune_loop():
+    """Hourly retention pass (same rules as the on-demand prune)."""
+    while True:
+        time.sleep(HISTORY_PRUNE_INTERVAL_SECONDS)
+        try:
+            res = _run_prune()
+            if res["deleted_jobs"] or res["deleted_files"]:
+                print(f"[prune] deleted {res['deleted_jobs']} jobs, "
+                      f"{res['deleted_files']} files, "
+                      f"freed {res['freed_bytes'] / 1048576:.1f} MB", flush=True)
+        except Exception as e:
+            print(f"[prune] error: {e}", flush=True)
+
+
 @app.post("/api/jobs")
 async def create_job(request: Request, type: str = Form(...),
                      params: str = Form("{}"),
@@ -472,12 +755,59 @@ def get_job(job_id: str, request: Request):
     return j
 
 
+@app.delete("/api/jobs/{job_id}")
+def delete_job_endpoint(job_id: str, request: Request):
+    """Delete one finished job: its DB row AND its input files and
+    output directory, so disk space is actually freed. Queued/running
+    jobs cannot be deleted (409); cancel them first."""
+    _require_auth(request)
+    try:
+        j = jobstore.delete_job(job_id)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+    if not j:
+        raise HTTPException(404, "job not found")
+    files, freed = _delete_job_files(job_id)
+    return {"id": job_id, "deleted_files": files, "freed_bytes": freed}
+
+
+@app.post("/api/jobs/prune")
+async def prune_jobs(request: Request):
+    """Run one retention pass now (same rules as the hourly background
+    prune). Optional JSON body overrides the limits for this one call,
+    e.g. {"max_jobs": 10000, "max_age_days": 90}; no body uses the
+    config defaults. Never deletes queued/running jobs. Also removes
+    orphaned files whose job id has no DB row, applies the short
+    video-output retention (finished transcode outputs older than
+    VIDEO_OUTPUT_RETENTION_DAYS are removed, records kept), and runs
+    the disk guard (video outputs first, then other finished outputs,
+    only when data/ or disk free is over the limit)."""
+    _require_auth(request)
+    max_jobs, max_age_days = HISTORY_MAX_JOBS, HISTORY_MAX_AGE_DAYS
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    if isinstance(body, dict):
+        if "max_jobs" in body:
+            max_jobs = body["max_jobs"]
+        if "max_age_days" in body:
+            max_age_days = body["max_age_days"]
+    if (not isinstance(max_jobs, int) or isinstance(max_jobs, bool)
+            or not isinstance(max_age_days, int) or isinstance(max_age_days, bool)
+            or max_jobs < 0 or max_age_days < 0):
+        raise HTTPException(400, "max_jobs and max_age_days must be integers >= 0")
+    return _run_prune(max_jobs, max_age_days)
+
+
 @app.get("/api/jobs/{job_id}/download")
 def download(job_id: str, request: Request):
     _require_auth(request)
     j = jobstore.get_job(job_id)
     if not j or j["status"] != "done":
         raise HTTPException(404, "result not ready")
+    if j.get("output_deleted"):
+        raise HTTPException(410, "输出文件已被清理（保留期过后自动删除，或磁盘紧张时被清理），请重新提交任务")
     out_dir = OUTPUT_DIR / job_id
     zip_path = out_dir / "result.zip"
     if not zip_path.exists():
@@ -612,6 +942,28 @@ def _run_one_job(job):
         result = run_job(job["type"], src, out_dir, job["params"], cb)
         jobstore.update_job(job_id, status="done", progress=1.0,
                             message="done", result=result, finished_at=time.time())
+        if job["type"] in DELETE_INPUT_AFTER_DONE_TYPES:
+            # Video compression: the uploaded video is only a working
+            # copy (the user has the original); delete it promptly so
+            # finished transcodes stop piling up on disk. The compressed
+            # output stays until history pruning removes the job. This
+            # must never fail the job, so every error is swallowed.
+            try:
+                for p in inputs:
+                    try:
+                        p.unlink()
+                    except OSError:
+                        pass
+            except Exception:
+                pass
+        # Aggressive disk guard: a burst of big compressions must not
+        # fill the disk before the hourly prune runs. Cheap check
+        # (walks data/ once); only deletes when over the limits, and
+        # never fails the job.
+        try:
+            _enforce_disk_guard()
+        except Exception:
+            pass
     except Exception as e:
         if str(e) == "cancelled by user":
             jobstore.update_job(job_id, status="cancelled", finished_at=time.time())
@@ -643,7 +995,17 @@ if __name__ == "__main__":
     # Jobs left 'running' by a previous process would block the heavy
     # slot forever; re-queue them (or dead-letter if retries exhausted).
     jobstore.reset_stale_running()
+    # One retention pass at startup (also removes orphaned files left
+    # behind by earlier DB states), then hourly in the background.
+    try:
+        res = _run_prune()
+        print(f"[prune] startup: deleted {res['deleted_jobs']} jobs, "
+              f"{res['deleted_files']} files, "
+              f"freed {res['freed_bytes'] / 1048576:.1f} MB", flush=True)
+    except Exception as e:
+        print(f"[prune] startup error: {e}", flush=True)
     threading.Thread(target=_worker_loop, daemon=True).start()
+    threading.Thread(target=_prune_loop, daemon=True).start()
     threading.Thread(target=sysstats.collector_loop, daemon=True).start()
     threading.Thread(target=sysstats.fast_sample_loop, daemon=True).start()
     # Prefer the cp.zin7.de cert; fall back to apple.su7.dpdns.org, then Tailscale.
