@@ -43,16 +43,23 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from werkzeug.exceptions import HTTPException
 
 from utils import (
-    INDEX_FILE, DB_FILE, THUMBNAIL_DIR,
+    INDEX_FILE, DB_FILE, THUMBNAIL_DIR, CURRENT_DIR,
     STATUS_PENDING, STATUS_STARRED, STATUS_REJECTED, STATUS_DOWNLOADED, STATUS_DISLIKED, VALID_STATUSES,
-    init_db, Session, Video, VideoRandomOrder, RenameLog, VideoPreviewEvent,
+    init_db, Session, Video, VideoRandomOrder, RenameLog, VideoPreviewEvent, DislikedVideo,
     load_paths, save_paths,
     load_cloud_config, save_cloud_config, mask_cookie, p115_manager,
+    parse_browser_cookie_json,
     apply_video_filters, score_to_status, status_to_score,
     BlacklistService, TagService, RenameService,
     _new_task, _tasks, _tasks_lock, _update_task,
     normalize_sha1, is_disliked, add_disliked, list_disliked, remove_disliked, count_disliked,
     library_operation_lock, serialized_library_operation,
+    cache_lookup, cache_lookup_many, classify_received_sha1,
+    cache_upsert, cache_upsert_many, cache_stats, cache_export_entries,
+)
+from local_source import (
+    load_local_source, save_local_source, validate_subscription_payload,
+    fetch_subscription, parse_sub_url,
 )
 from fingerprint_worker import (
     sync_cloud_videos, run_cloud_sync_task, import_local_history_sha1, cloud_poller,
@@ -60,6 +67,7 @@ from fingerprint_worker import (
 from star_tasks import (
     task_service, get_config as get_star_config,
     save_config as save_star_config, ACTIONS as STAR_ACTIONS,
+    is_size_folder_path, normalize_move_params,
 )
 
 
@@ -70,6 +78,7 @@ _path_config_lock = threading.RLock()
 _midframe_semaphore = threading.Semaphore(2)
 _MIDFRAME_TIMEOUT = 30
 _FFMPEG_BIN = shutil.which('ffmpeg') or '/opt/homebrew/bin/ffmpeg'
+_FFPROBE_BIN = shutil.which('ffprobe') or '/opt/homebrew/bin/ffprobe'
 
 dy_bp = Blueprint('dy', __name__)
 
@@ -90,9 +99,16 @@ def api_cloud_list():
     status = (request.args.get('status') or STATUS_PENDING).strip()
     limit = max(1, min(1000, int(request.args.get('limit', 200))))
     offset = max(0, int(request.args.get('offset', 0)))
+    source = (request.args.get('source') or 'all').strip()
 
     with Session() as session:
         q = session.query(Video).filter(or_(Video.source_type != 'local_history', Video.source_type.is_(None)))
+        if source == 'cloud':
+            q = q.filter(Video.source_type == 'cloud')
+        elif source == 'local':
+            q = q.filter(Video.source_type == 'local')
+        elif source not in ('all', ''):
+            raise ValueError('来源筛选无效')
         if status != 'all':
             if status not in VALID_STATUSES:
                 raise ValueError('status 参数无效')
@@ -113,6 +129,7 @@ def api_cloud_list():
         'thumb': v.thumb or '',
         'status': v.status or STATUS_PENDING,
         'score': v.score or 0,
+        'source': v.source_type or 'cloud',
         'tags': v.tags or '',
         'preview_count': v.preview_count or 0,
     } for v in rows]
@@ -405,6 +422,36 @@ def api_cloud_config():
     return jsonify({'success': True, 'config': safe, 'msg': '云端配置已保存'})
 
 
+@dy_bp.route('/api/cloud/cookie/import', methods=['POST'])
+def api_cloud_cookie_import():
+    """快捷导入浏览器导出的 115 Cookie JSON（EditThisCookie / Cookie-Editor 等）。
+
+    前端把浏览器插件复制的 JSON 数组原文 POST 过来，后端解析成 Cookie 头
+    字符串后走 save_cloud_config 保存（同时写 cloud_config.json 与
+    115-cookies.txt，并重置 p115 客户端使新 Cookie 立即生效）。
+    返回只含 Cookie 名与数量、掩码，绝不回传完整 Cookie 值。
+    """
+    data = request.get_json() or {}
+    raw = data.get('cookies_json', data.get('cookies', data.get('text', '')))
+    if isinstance(raw, (list, dict)):
+        raw = json.dumps(raw, ensure_ascii=False)
+    if not isinstance(raw, str):
+        return jsonify({'success': False, 'error': '请粘贴浏览器导出的 Cookie JSON'}), 400
+    try:
+        parsed = parse_browser_cookie_json(raw)
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    saved = save_cloud_config({'cookie': parsed['cookie']})
+    return jsonify({
+        'success': True,
+        'msg': 'Cookie 已导入（%d 个）' % parsed['count'],
+        'names': parsed['names'],
+        'count': parsed['count'],
+        'cookie_masked': mask_cookie(saved.get('cookie', '')),
+        'has_cookie': True,
+    })
+
+
 @dy_bp.route('/api/cloud/dirs', methods=['GET'])
 def api_cloud_dirs():
     """列出 115 指定目录下的子文件夹，方便用户查看目录 CID。"""
@@ -444,6 +491,241 @@ def api_cloud_commit():
     action = data.get('action', 'commit_archive')
     job = task_service.submit(action, dry_run=dry_run)
     return jsonify({'success': True, 'task': job}), 202
+
+
+# ================= 本地来源（Windows 客户端） =================
+# 不调任何 115 接口。订阅链接里的 token 只存服务端 db/local_source.json（0600），
+# 永不返回给前端；播放走 /videos/<id>/local-play 同源代理。
+def _send_local_client(filename, download_name):
+    path = os.path.join(CURRENT_DIR, filename)
+    if not os.path.exists(path):
+        abort(404, '本地客户端脚本尚未部署')
+    response = send_file(path, mimetype='text/plain; charset=utf-8', max_age=0)
+    response.headers['Content-Disposition'] = 'attachment; filename="%s"' % download_name
+    return response
+
+
+@dy_bp.route('/download/local-client.py', methods=['GET'])
+def download_local_client_py():
+    """下载本地来源客户端脚本（Python 标准库 only，Windows/Mac/Linux 通用）。"""
+    return _send_local_client('local_client.py', 'local_client.py')
+
+
+@dy_bp.route('/download/local-client.bat', methods=['GET'])
+def download_local_client_bat():
+    """下载本地来源客户端 Windows 启动脚本（双击运行）。"""
+    return _send_local_client('local_client.bat', 'local_client.bat')
+
+
+@dy_bp.route('/api/local/status', methods=['GET'])
+def api_local_status():
+    """本地来源连接状态（不含 token）。"""
+    src = load_local_source()
+    if not src or not src.get('base_url'):
+        return jsonify({'success': True, 'configured': False})
+    with Session() as session:
+        count = session.query(Video).filter(Video.source_type == 'local').count()
+    return jsonify({
+        'success': True,
+        'configured': True,
+        'host': src.get('host', ''),
+        'base_url': src.get('base_url', ''),
+        'roots': src.get('roots', []),
+        'updated_at': src.get('updated_at', ''),
+        'video_count': count,
+    })
+
+
+@dy_bp.route('/api/local/sync', methods=['POST'])
+def api_local_sync():
+    """同步本地来源订阅。两种输入（二选一）：
+
+    1. {sub_url}：服务端直连客户端拉取订阅（局域网内，无浏览器混合内容限制）。
+    2. {payload, base_url, token}：前端已从浏览器直连客户端取到订阅，
+       把 payload 转交给服务端写入（HTTPS 页面直连失败时自动改走方式 1）。
+
+    按 (source_type='local', file_id) 去重写入；已有记录保留打标与结算状态，
+    只更新元数据；本次订阅里没有的未结算记录视为文件已移除/改名，删除。
+
+    头部哈希（Video.sha1 = SHA1 前 1MB，与 115 全文件 SHA1 同字段同格式）：
+    新视频先查不喜欢数据集（在其中的自动跳过，计 disliked），再按 sha1 做
+    内容去重（同一内容换名/换目录只留第一条，计 duplicates）；无哈希的视频
+    （旧版客户端）跳过这两步，不报错。已有记录只更新元数据与哈希，不重新
+    判定去重/不喜欢（D 键已把该行标为 disliked 的，行本身保留）。
+    """
+    data = request.get_json() or {}
+    payload = None
+    base_url = None
+    token = None
+    if data.get('sub_url'):
+        base_url, token = parse_sub_url(str(data['sub_url']))
+        payload = fetch_subscription(str(data['sub_url']))
+    elif data.get('payload') is not None:
+        payload = data['payload']
+        base_url = (data.get('base_url') or '').strip()
+        token = (data.get('token') or '').strip()
+        if not base_url or not token:
+            raise ValueError('缺少客户端地址或 token')
+        parsed = urlparse(base_url)
+        if parsed.scheme not in ('http', 'https') or not parsed.hostname:
+            raise ValueError('客户端地址无效')
+        base_url = '%s://%s' % (parsed.scheme, parsed.netloc)
+    else:
+        raise ValueError('请提供订阅链接 sub_url 或客户端订阅 payload')
+    videos = validate_subscription_payload(payload)
+    roots = payload.get('roots') or []
+    host = payload.get('host') or ''
+
+    with Session() as session:
+        existing = {v.file_id: v for v in session.query(Video).filter(Video.source_type == 'local').all()}
+        disliked_sha1s = {r.sha1 for r in session.query(DislikedVideo.sha1).all() if r.sha1}
+        # 内容去重用：已有本地行的 sha1 计数（更新行改哈希时维护，避免误判）
+        sha1_counts = {}
+        for v in existing.values():
+            if v.sha1:
+                sha1_counts[v.sha1] = sha1_counts.get(v.sha1, 0) + 1
+        seen = set()
+        seen_sha1s = set(sha1_counts)
+        added = 0
+        updated = 0
+        duplicates = 0
+        disliked_skipped = 0
+        cache_filled = 0
+        cache_writes = []  # 本轮观测到的哈希，同步结束时批量写回文件身份缓存
+        # 预取本轮所有 rel_path 的缓存条目（一次查询），写回时用它分类哈希
+        # 形式（头部哈希 / 全文件哈希），避免逐条查库。
+        cache_by_rel = cache_lookup_many([item.get('rel_path') or '' for item in videos])
+        for item in videos:
+            sha1 = item.get('sha1') or ''
+            # 文件身份缓存（加速，非替代）：客户端没给哈希时（旧版客户端 /
+            # 清单里没有该文件），若缓存里有该相对路径的哈希且大小一致，
+            # 直接复用，不重新读文件算哈希。头部哈希优先（与客户端现算同
+            # 形式）；只有全哈希时用全哈希（从 115 下载到本地的文件，其
+            # Video.sha1 本就是全哈希）。客户端给了哈希时沿用客户端的值，
+            # 传统行为不变；缓存只补缺，不覆盖。
+            if not sha1:
+                hit = cache_lookup(item.get('rel_path') or '', size=item.get('size'))
+                if hit:
+                    filled = hit.get('sha1_head') or hit.get('sha1_full') or ''
+                    if filled:
+                        sha1 = filled
+                        cache_filled += 1
+            seen.add(item['id'])
+            row = existing.get(item['id'])
+            if row is None:
+                # 新视频：先查不喜欢数据集（广告拦截），再查内容重复
+                if sha1 and sha1 in disliked_sha1s:
+                    disliked_skipped += 1
+                    continue
+                if sha1 and sha1 in seen_sha1s:
+                    duplicates += 1
+                    continue
+                session.add(Video(
+                    filename=item['name'],
+                    detail=item['rel_path'],
+                    rel_path=item['rel_path'],
+                    file_size=item['size'],
+                    file_id=item['id'],
+                    pickcode='',
+                    sha1=sha1,
+                    inbox_cid='',
+                    duration=0,
+                    thumb='',
+                    status=STATUS_PENDING,
+                    score=0,
+                    source_type='local',
+                    cloud_moved=0,
+                    cloud_deleted=0,
+                ))
+                if sha1:
+                    seen_sha1s.add(sha1)
+                    sha1_counts[sha1] = sha1_counts.get(sha1, 0) + 1
+                    # 按缓存现状分类：全哈希绝不写进 sha1_head（见
+                    # classify_received_sha1）。
+                    _col_val = classify_received_sha1(
+                        cache_by_rel.get(item['rel_path']), sha1)
+                    if _col_val:
+                        _w = {'rel_path': item['rel_path'], 'size': item['size'],
+                              'origin': 'local'}
+                        _w[_col_val[0]] = _col_val[1]
+                        cache_writes.append(_w)
+                added += 1
+            else:
+                row.filename = item['name']
+                row.rel_path = item['rel_path']
+                row.detail = item['rel_path']
+                row.file_size = item['size']
+                if sha1 and row.sha1 != sha1:
+                    old = row.sha1 or ''
+                    if old and old in sha1_counts:
+                        sha1_counts[old] -= 1
+                        if sha1_counts[old] <= 0:
+                            seen_sha1s.discard(old)
+                            del sha1_counts[old]
+                    row.sha1 = sha1
+                    seen_sha1s.add(sha1)
+                    sha1_counts[sha1] = sha1_counts.get(sha1, 0) + 1
+                if sha1:
+                    # 按缓存现状分类：全哈希绝不写进 sha1_head（见
+                    # classify_received_sha1）。
+                    _col_val = classify_received_sha1(
+                        cache_by_rel.get(item['rel_path']), sha1)
+                    if _col_val:
+                        _w = {'rel_path': item['rel_path'], 'size': item['size'],
+                              'origin': 'local'}
+                        _w[_col_val[0]] = _col_val[1]
+                        cache_writes.append(_w)
+                row.updatetime = datetime.datetime.now()
+                updated += 1
+        removed = 0
+        for fid, row in existing.items():
+            if fid not in seen and not row.cloud_moved and not row.cloud_deleted:
+                session.delete(row)
+                removed += 1
+        session.commit()
+    # 本轮观测到的哈希批量写回文件身份缓存（供下次清单导出复用）。
+    # 写回时已按缓存现状分类，全哈希只进 sha1_full，绝不进 sha1_head。
+    # 缓存写失败不影响同步结果（cache_upsert_many 内部容错）。
+    if cache_writes:
+        cache_upsert_many(cache_writes)
+    save_local_source(base_url, token, roots, host)
+    return jsonify({
+        'success': True,
+        'added': added,
+        'updated': updated,
+        'removed': removed,
+        'duplicates': duplicates,
+        'disliked': disliked_skipped,
+        'cache_filled': cache_filled,
+        'total': len(videos),
+        'roots': roots,
+        'host': host,
+    })
+
+
+@dy_bp.route('/api/cache/stats', methods=['GET'])
+def api_cache_stats():
+    """文件身份缓存统计（总数、已索引数、含全哈希/头部哈希数、按来源计数）。"""
+    return jsonify({'success': True, **cache_stats()})
+
+
+@dy_bp.route('/api/cache/export', methods=['GET'])
+def api_cache_export():
+    """导出客户端缓存清单（dy-cache-manifest.json）。
+
+    含头部哈希或全文件哈希的条目：客户端用它跳过读文件算哈希（清单里的
+    sha1 即要复用的哈希值，sha1_kind 标明形式：'head'=头部哈希，'full'=
+    115 全文件哈希）。用法：下载后传给 local_client.py 的 --cache 参数。
+    清单为空时返回空 entries，不报错。
+    """
+    entries = cache_export_entries()
+    body = json.dumps({'version': 1, 'entries': entries}, ensure_ascii=False)
+    return Response(
+        body,
+        status=200,
+        mimetype='application/json',
+        headers={'Content-Disposition': 'attachment; filename="dy-cache-manifest.json"'},
+    )
 
 
 @dy_bp.route('/api/cloud/import_local_sha1', methods=['POST'])
@@ -608,6 +890,7 @@ def get_videos():
         'tags': v.tags or '',
         'score': v.score or 0,
         'status': v.status or STATUS_PENDING,
+        'source': v.source_type or 'cloud',
         'detail': v.rel_path or v.detail or v.filename,
         'rel_path': v.rel_path or v.detail or v.filename,
         'file_size': v.file_size or 0,
@@ -814,6 +1097,47 @@ def stream_video_file(video_id):
     return redirect(url, code=302)
 
 
+@dy_bp.route('/videos/<int:video_id>/local-play', methods=['GET', 'HEAD'])
+def local_play_proxy(video_id):
+    """本地来源播放代理：把浏览器对局域网客户端的直链请求经 Mac 服务端中转。
+
+    浏览器在 HTTPS 页面（cpl.zin7.de）里不能直接拉 http:// 局域网地址
+    （混合内容拦截），所以播放走同源代理：服务端按 Range 把客户端的
+    /file/<id> 流式转发回来，token 只留在服务端。普通 <video> 直播，
+    不走 m3u8/HLS，不调 115 接口。
+    """
+    with Session() as session:
+        video = session.get(Video, video_id)
+    if not video or video.source_type != 'local' or not video.file_id:
+        abort(404, '本地视频不存在')
+    src = load_local_source()
+    if not src or not src.get('base_url') or not src.get('token'):
+        abort(502, '本地客户端未连接，请先同步本地来源')
+    target = '%s/file/%s?token=%s' % (
+        src['base_url'].rstrip('/'), quote(video.file_id, safe=''), quote(src['token'], safe=''))
+    headers = {}
+    if request.headers.get('Range'):
+        headers['Range'] = request.headers['Range']
+    try:
+        resp = requests.request(request.method, target, headers=headers, timeout=10, stream=True)
+    except requests.RequestException:
+        abort(502, '无法连接本地客户端（请确认电脑上的 local_client.py 正在运行）')
+    if resp.status_code not in (200, 206):
+        abort(502, '本地客户端返回错误')
+    out_headers = {}
+    for key in ('Content-Type', 'Content-Length', 'Content-Range', 'Accept-Ranges'):
+        if resp.headers.get(key):
+            out_headers[key] = resp.headers[key]
+
+    def _gen():
+        try:
+            yield from resp.iter_content(chunk_size=65536)
+        finally:
+            resp.close()
+
+    return Response(stream_with_context(_gen()), status=resp.status_code, headers=out_headers)
+
+
 @dy_bp.route('/videos/<int:video_id>/thumbnail', methods=['GET'])
 def get_video_thumbnail(video_id):
     """优先重定向到 115 云端缩略图 thumb。"""
@@ -822,6 +1146,81 @@ def get_video_thumbnail(video_id):
     if not video or not video.thumb:
         abort(404, '暂无云端缩略图')
     return redirect(video.thumb, code=302)
+
+
+def _probe_duration(url):
+    """用 ffprobe 读流的时长（秒，float）；读不到返回 None。"""
+    cmd = [_FFPROBE_BIN, '-v', 'error',
+           '-show_entries', 'format=duration',
+           '-of', 'default=noprint_wrappers=1:nokey=1', url]
+    try:
+        result = subprocess.run(cmd, timeout=15,
+                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False)
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+    try:
+        value = float(result.stdout.decode('utf-8', 'replace').strip())
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
+def _local_midframe(video_id, duration):
+    """本地来源中间帧：输入改为本机 local-play 代理 URL；ffmpeg 命令、缓存路径、
+    信号量与超时与云端完全一致，只换输入与取时长方式（库里没有时长就用 ffprobe
+    读流，ffprobe 失败按 10 秒取中间帧；ffprobe 读到的时长写回数据库）。
+    本地没有 115 原生缩略图可回落，失败直接 404/503/504。"""
+    src = load_local_source()
+    if not src or not src.get('base_url') or not src.get('token'):
+        abort(502, '本地客户端未连接，请先同步本地来源')
+    port = int(os.environ.get('VIDEO_TAG_PORT', 81))
+    url = f'http://127.0.0.1:{port}/dy/videos/{video_id}/local-play'
+    if not duration or duration <= 0:
+        probed = _probe_duration(url)
+        if probed and probed > 0:
+            duration = probed
+            with Session() as session:
+                session.query(Video).filter(Video.id == video_id).update(
+                    {Video.duration: int(probed)}, synchronize_session=False)
+                session.commit()
+    mid = max(0, int(duration or 10) // 2)
+    out_path = os.path.join(THUMBNAIL_DIR, f'midframe_{video_id}.jpg')
+    os.makedirs(THUMBNAIL_DIR, exist_ok=True)
+    # 临时文件保留 .jpg 后缀（ffmpeg 靠扩展名推断输出格式），线程 id 保证唯一；
+    # 另用 -f image2 显式指定图片输出格式，双保险。
+    tmp_path = out_path + f'.{threading.get_ident()}.jpg'
+    # -ss 在 -i 之前：快速定位到中间位置；只取一帧；-q:v 3 较高质量。
+    # local-play 是本机代理直链，不需要 115 的 UA 绑定，但命令与云端保持一致。
+    cmd = [_FFMPEG_BIN, '-hide_banner', '-loglevel', 'error',
+           '-user_agent', 'Mozilla/5.0',
+           '-ss', str(mid), '-i', url,
+           '-frames:v', '1', '-q:v', '3', '-f', 'image2', '-y', tmp_path]
+    if not _midframe_semaphore.acquire(timeout=35):
+        abort(503, '中间帧提取繁忙，请稍后重试')
+    try:
+        try:
+            result = subprocess.run(cmd, timeout=_MIDFRAME_TIMEOUT,
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, check=False)
+        except subprocess.TimeoutExpired:
+            abort(504, '中间帧提取超时')
+        if result.returncode != 0:
+            current_app.logger.warning(
+                'midframe ffmpeg failed video=%s rc=%s err=%s',
+                video_id, result.returncode,
+                result.stderr.decode('utf-8', 'replace')[-500:])
+        if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
+            os.replace(tmp_path, out_path)
+            return send_file(out_path, mimetype='image/jpeg', max_age=86400)
+    finally:
+        _midframe_semaphore.release()
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+    abort(404, '本地中间帧提取失败（请确认电脑上的 local_client.py 正在运行）')
 
 
 @dy_bp.route('/videos/<int:video_id>/midframe', methods=['GET'])
@@ -835,9 +1234,12 @@ def get_video_midframe(video_id):
         video = session.get(Video, video_id)
         if not video:
             abort(404, '视频不存在')
+        source_type = video.source_type or ''
         duration = video.duration or 0
         pickcode = video.pickcode or ''
         thumb = video.thumb or ''
+    if source_type == 'local':
+        return _local_midframe(video_id, duration)
     if not duration or not pickcode:
         if thumb:
             return redirect(thumb, code=302)
@@ -970,8 +1372,22 @@ def api_tag_groups():
 # ================= 统计与归档任务 =================
 @dy_bp.route('/library/stats')
 def library_stats():
+    # inbox_cid 可选：传了就只统计该 115 目录的视频（喜欢/待筛按目录绑定），
+    # 不传则全局。local_history 不属于任何目录，不参与过滤。
+    # source 可选：all（默认）/ cloud / local；local 行的 inbox_cid 为空，
+    # 选 local 时忽略 inbox_cid 过滤。
+    inbox_cid = (request.args.get('inbox_cid') or '').strip()
+    source = (request.args.get('source') or 'all').strip()
     with Session() as session:
         base_q = session.query(Video).filter(or_(Video.source_type != 'local_history', Video.source_type.is_(None)))
+        if source == 'cloud':
+            base_q = base_q.filter(Video.source_type == 'cloud')
+        elif source == 'local':
+            base_q = base_q.filter(Video.source_type == 'local')
+        elif source not in ('all', ''):
+            raise ValueError('来源筛选无效')
+        if inbox_cid and source != 'local':
+            base_q = base_q.filter(Video.inbox_cid == inbox_cid)
         total = base_q.count()
         pending = base_q.filter(Video.status == STATUS_PENDING).count()
         starred = base_q.filter(Video.status == STATUS_STARRED).count()
@@ -994,6 +1410,79 @@ def library_stats():
             result['preview_total'] = session.query(func.coalesce(func.sum(Video.preview_count), 0)).scalar()
             result['previewed_videos'] = session.query(Video.id).filter(Video.preview_count > 0).count()
     return jsonify(result)
+
+
+# 大小分桶：按大小分桶的视频体积分布（MB），供按大小整理时选阈值用。
+# 只读本地 SQLite，不调 115 接口。分桶边缘固定为 100/300/500/1024/2048/4096MB；
+# 统计口径与 move_small_videos / move_large_videos 一致（当前待筛选目录、未移动、未删除、未进大小文件夹）。
+_SIZE_EDGES_MB = (100, 300, 500, 1024, 2048, 4096)
+
+
+@dy_bp.route('/library/size-distribution')
+def library_size_distribution():
+    cfg = get_star_config()
+    inbox_cid = (request.args.get('inbox_cid') or '').strip() or str(cfg.get('inbox_cid') or '').strip()
+    if not inbox_cid:
+        return jsonify({'success': False, 'error': '请先在云端配置中填写 115 待筛选目录 (INBOX_CID)'}), 400
+    try:
+        threshold_mb = int(float(request.args.get('max_size_mb'))) if request.args.get('max_size_mb') else None
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': '阈值必须是数字（单位 MB）'}), 400
+    defaults = normalize_move_params({'max_size_mb': threshold_mb} if threshold_mb else None, cfg)
+    threshold_mb = threshold_mb if threshold_mb is not None else defaults['max_size_mb']
+    threshold_mb = max(10, min(10240, threshold_mb))
+    try:
+        min_mb = int(float(request.args.get('min_size_mb'))) if request.args.get('min_size_mb') else None
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': '阈值必须是数字（单位 MB）'}), 400
+    defaults_large = normalize_move_params({'min_size_mb': min_mb} if min_mb else None, cfg, direction='large')
+    min_mb = min_mb if min_mb is not None else defaults_large['min_size_mb']
+    min_mb = max(10, min(10240, min_mb))
+
+    with Session() as session:
+        rows = session.query(Video.file_size, Video.rel_path).filter(
+            Video.source_type == 'cloud',
+            Video.inbox_cid == inbox_cid,
+            Video.file_size > 0,
+            Video.file_id != '',
+            Video.cloud_moved == 0,
+            Video.cloud_deleted == 0,
+        ).all()
+    sizes = [int(sz) for sz, rel in rows if not is_size_folder_path(rel)]
+    total_bytes = sum(sizes)
+
+    def _fmt(mb):
+        return ('%dGB' % (mb // 1024)) if mb >= 1024 and mb % 1024 == 0 else ('%dMB' % mb)
+
+    buckets = []
+    edges = [0] + list(_SIZE_EDGES_MB)
+    for i, lo in enumerate(edges):
+        hi = _SIZE_EDGES_MB[i] if i < len(_SIZE_EDGES_MB) else None
+        in_bucket = [s for s in sizes if s >= lo * 1048576 and (hi is None or s < hi * 1048576)]
+        label = ('<%s' % _fmt(hi)) if lo == 0 else (('%s-%s' % (_fmt(lo), _fmt(hi))) if hi else ('>%s' % _fmt(lo)))
+        buckets.append({'label': label, 'min_mb': lo, 'max_mb': hi,
+                        'count': len(in_bucket), 'bytes': sum(in_bucket)})
+    cumulative = []
+    for edge in _SIZE_EDGES_MB:
+        under = [s for s in sizes if s < edge * 1048576]
+        cumulative.append({'max_mb': edge, 'label': '≤' + _fmt(edge),
+                           'count': len(under), 'bytes': sum(under)})
+    under_threshold = [s for s in sizes if s < threshold_mb * 1048576]
+    over_threshold = [s for s in sizes if s >= min_mb * 1048576]
+    return jsonify({
+        'success': True,
+        'inbox_cid': inbox_cid,
+        'total': len(sizes),
+        'total_bytes': total_bytes,
+        'buckets': buckets,
+        'cumulative': cumulative,
+        'preview': {'max_mb': threshold_mb, 'label': '≤' + _fmt(threshold_mb),
+                    'count': len(under_threshold), 'bytes': sum(under_threshold)},
+        'preview_large': {'min_mb': min_mb, 'label': '≥' + _fmt(min_mb),
+                          'count': len(over_threshold), 'bytes': sum(over_threshold)},
+        'defaults': defaults,
+        'defaults_large': defaults_large,
+    })
 
 
 @dy_bp.route('/tasks')
@@ -1029,7 +1518,8 @@ def star_configuration():
 def star_task_collection():
     if request.method == 'POST':
         data = request.get_json() or {}
-        job = task_service.submit(data.get('action'), bool(data.get('dry_run', False)))
+        job = task_service.submit(data.get('action'), bool(data.get('dry_run', False)),
+                                  params=data.get('params'))
         return jsonify({'success': True, 'task': job}), 202
     return jsonify({'tasks': task_service.list()})
 

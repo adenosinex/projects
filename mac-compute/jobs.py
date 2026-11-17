@@ -104,6 +104,25 @@ def list_jobs(limit=50):
     return out
 
 
+def list_jobs_by_types(types, limit=50):
+    """Most recent jobs of the given types only (for per-project token
+    pages). Filters in SQL so an old job of a rare type (e.g. ocr) is
+    not pushed out by the newest 200 rows of a busy type."""
+    with _lock, sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        ph = ",".join("?" * len(types))
+        rows = conn.execute(
+            f"SELECT * FROM jobs WHERE type IN ({ph}) "
+            f"ORDER BY created_at DESC LIMIT ?",
+            (*types, limit)).fetchall()
+    out = []
+    for row in rows:
+        d = dict(row)
+        d["params"] = json.loads(d["params"] or "{}")
+        out.append(d)
+    return out
+
+
 def count_jobs():
     with _lock, sqlite3.connect(DB_PATH) as conn:
         return conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]

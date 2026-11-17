@@ -106,6 +106,35 @@ def pick_top_by_speed(results, count=3):
     return ok[:count]
 
 
+# A relay chain only counts as usable if it actually downloads faster
+# than this (user rule, 2026-11-15). Below it, the chain is not
+# featured at all — better a short list than a dead one.
+CHAIN_MIN_SPEED_BPS = 1_000_000
+
+
+def _chain_exit_pref(result):
+    """Exit-provider preference for a tested chain (IP quality first):
+    shoc (fraud 0/100) first, debi (30/100) second, anything else
+    last. The chain result carries the exit node name in "exit"."""
+    n = str((result or {}).get("exit") or "").lower()
+    if "shoc" in n:
+        return 0
+    if "debi" in n:
+        return 1
+    return 2
+
+
+def pick_top_relay_chains(chain_results, count=3):
+    """Featured relay chains: only chains at or above
+    CHAIN_MIN_SPEED_BPS, shoc-exit chains first (IP quality), then
+    debi-exit, then the rest; fastest first within each exit group."""
+    usable = [r for r in (chain_results or [])
+              if download_speed(r) >= CHAIN_MIN_SPEED_BPS]
+    usable.sort(key=lambda r: (_chain_exit_pref(r),
+                               -download_speed(r)))
+    return usable[:count]
+
+
 def _rename_dialer_proxy(proxy, main_yaml_name, aux_yaml_name):
     """Return a copy of a proxy with its dialer-proxy renamed to the
     renamed target name (main map first, then aux map, else unchanged).
@@ -287,6 +316,23 @@ def _apply_template(template_doc, source_doc, main_deduped,
                            "proxies": ["节点选择"]})
             group_names.add(policy)
 
+    # --- break proxy-group cycles (2026-11-17, planb) -----------------
+    # A source subscription may ship service groups that list 节点选择
+    # as a fallback member (planb's ChatGPT/Telegram/... do). Those
+    # groups are also members of 节点选择, so the back-reference creates
+    # a 节点选择 -> group -> 节点选择 cycle that Clash rejects
+    # ("Loop is detected in ProxyGroup"). Strip 节点选择 from the
+    # members of any group that 节点选择 itself contains; the group
+    # stays reachable inside 节点选择 and falls through to its nodes.
+    # Groups added by the template (RULE_GROUPS / safety net) are not
+    # members of 节点选择, so they keep their 节点选择 fallback.
+    sel_set = set(sel_members)
+    for g in groups:
+        if g.get("name") in sel_set and g.get("name") != "节点选择":
+            proxies = g.get("proxies") or []
+            if "节点选择" in proxies:
+                g["proxies"] = [p for p in proxies if p != "节点选择"]
+
     return yaml.safe_dump(doc, allow_unicode=True, sort_keys=False)
 
 
@@ -384,8 +430,8 @@ def build_yaml(main_nodes, aux_nodes, direct_results, chain_results,
         "speed_mb": round(download_speed(r) / 1_000_000, 1),
     } for r in featured]
 
-    # --- 精选中继: top 3 chains by download speed ----------------------
-    relay_featured = pick_top_by_speed(chain_results, 3)
+    # --- 精选中继: usable chains only (>= 1 MB/s), shoc-exit first ---
+    relay_featured = pick_top_relay_chains(chain_results, 3)
     chain_yaml_proxies = []
     chain_yaml_names = []
     relay_featured_rows = []

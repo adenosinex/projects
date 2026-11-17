@@ -61,6 +61,23 @@ dialog{width:min(700px,calc(100vw - 30px));max-height:90dvh;padding:0;margin:aut
 .star-task-card>div {display:flex;flex-wrap:wrap;gap:7px;margin-top:6px}
 .star-task-card .button {font-size:10px;padding:8px 9px;flex:1}
 .star-task-hint {font-size:10px;line-height:1.8;color:var(--muted);margin-top:17px}
+.star-task-card>.size-hist {display:block}
+.size-hist-bars {display:grid;gap:5px;margin:2px 0 11px}
+.size-bar-row {display:grid;grid-template-columns:76px 1fr auto;gap:8px;align-items:center;font-size:10px;color:#92a398}
+.size-bar-row.under {color:#cfe3d4}
+.size-bar-row.over {color:#e8d9ac}
+.size-bar-track {height:9px;background:#232d28;border-radius:5px;overflow:hidden}
+.size-bar-fill {height:100%;background:#5b7a68;border-radius:5px}
+.size-bar-row.under .size-bar-fill {background:#a3ecc4}
+.size-bar-row.over .size-bar-fill {background:#dfbd7a}
+.size-controls {display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:9px;font-size:11px;color:#92a398}
+.size-controls input {padding:6px 8px;font-size:12px}
+.size-controls input[type=number] {width:84px}
+.size-controls input[type=text] {width:130px}
+.size-quick {display:flex;gap:5px;flex-wrap:wrap}
+.size-quick button {padding:5px 8px;border:1px solid #303c35;border-radius:6px;font-size:10px;color:#b8c7bf;background:#1d2620}
+.size-quick button.active {border-color:#a3ecc4;color:#a3ecc4}
+.size-preview {font-size:11px;line-height:1.8;color:#cfe3d4}
 .star-placeholder {padding:32px 12px;text-align:center;color:var(--muted);font-size:12px;line-height:1.8}
 .star-detail-title {display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:19px}
 .star-detail-title h3 {font-size:14px;font-weight:550;line-height:1.7}
@@ -143,13 +160,13 @@ dialog{width:min(700px,calc(100vw - 30px));max-height:90dvh;padding:0;margin:aut
 .feed-layout{height:calc(100dvh - var(--header-height));min-height:0;display:grid;grid-template-columns:var(--side) minmax(0,1fr)}.feed-layout.browser-open{--side:238px}.feed-browser{display:flex;flex-direction:column;min-height:0;min-width:0;background:#101116;border-right:1px solid var(--line)}.browser-heading{height:35px;display:flex;align-items:center;justify-content:center;padding:4px 8px;gap:6px;flex-shrink:0}.browser-heading h2{display:none;flex:1;font-size:12px;font-weight:500}.browser-heading h2 span{font-size:10px;color:#69748a;margin-left:6px}.browser-heading .icon-button{width:27px;height:27px}.browser-heading .icon-button svg{width:16px;height:16px}.browser-tabs{display:none;gap:3px;padding:0 10px 9px}.browser-tabs button{flex:1;font-size:10px;padding:6px 0;border-radius:5px;color:#7c879c}.browser-tabs button.active{background:#ffffff0b;color:#edf0f7}
 .library-content{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:0 8px 9px;scrollbar-width:thin;scrollbar-color:#343b4b transparent}.video-grid{display:grid;grid-template-columns:1fr;gap:10px;align-content:start}.video-card{position:relative;min-width:0}.thumbnail-button{display:block;width:100%;aspect-ratio:3/4;position:relative;overflow:hidden;border:2px solid transparent;border-radius:7px;background:#222630;padding:0;isolation:isolate}.video-card:hover .thumbnail-button{border-color:#ffffff55}.video-card.current .thumbnail-button{border-color:#ff4267}.thumbnail-placeholder{position:absolute;inset:0;background:linear-gradient(150deg,#303541,#1c222e 55%,#151a25);display:grid;place-items:center;color:#ffffff25}.thumbnail-placeholder svg{width:23px;height:23px}.thumbnail-button img{width:100%;height:100%;object-fit:cover;position:relative;display:block}.thumbnail-button:after{content:"";position:absolute;inset:48% 0 0;background:linear-gradient(transparent,#0007);pointer-events:none}.thumbnail-number{position:absolute;left:4px;bottom:4px;font-size:8px;color:#fff;z-index:1}.preview-count{position:absolute;right:3px;bottom:3px;display:flex;align-items:center;background:#0006;border-radius:3px;padding:1px 3px;font-size:8px;z-index:1;color:#dae1ed}.preview-count b{font-weight:400}.preview-count svg{display:none}.now-playing{position:absolute;left:4px;bottom:18px;font-size:0;z-index:1}.now-playing:before{content:"";display:block;width:4px;height:8px;border-radius:2px;background:#ff4267;box-shadow:3px 2px 0 -1px #ff4267}.thumbnail-score{position:absolute;left:5px;top:5px;color:#e4eaf4;z-index:2;filter:drop-shadow(0 1px 3px #000)}.thumbnail-score svg{width:12px;height:12px}.thumbnail-score.liked{color:#ff6085}.thumbnail-score.liked svg{fill:currentColor}.frame-expand{position:absolute;right:5px;top:5px;display:grid;place-items:center;width:21px;height:21px;padding:0;background:#121722af;border-radius:5px;color:#e4ebf7;z-index:2;opacity:0;backdrop-filter:blur(6px)}.frame-expand svg{width:12px;height:12px}.video-card:hover .frame-expand,.video-card:focus-within .frame-expand,.video-card.current .frame-expand{opacity:1}.frame-expand[aria-busy=true]{opacity:1}.frame-expand[aria-busy=true] svg{visibility:hidden}.frame-expand[aria-busy=true]:after{content:"";position:absolute;width:11px;height:11px;border:1px solid #ffffff25;border-top-color:#fff;border-radius:50%;animation:media-spin .8s linear infinite}.card-body{display:none;padding:5px 1px 0}.card-title{font-size:10px;color:#949fb5;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;text-align:left;width:100%;padding:0}.current .card-title{color:#e2e8f5}
 .browser-pagination{display:grid;grid-template-columns:1fr 1fr;padding:6px 7px 0;border-top:1px solid var(--line);flex-shrink:0}.browser-pagination #page-label{grid-column:1/-1;grid-row:1;text-align:center;font-size:9px;color:#69758d;font-variant-numeric:tabular-nums}.browser-pagination .icon-button{width:100%;height:23px}.browser-pagination .icon-button svg{width:13px;height:13px}#jump-form{display:none}.browser-tip{display:none}.browser-bottom{display:flex;justify-content:center;gap:4px;padding:3px 5px 5px}.browser-bottom .icon-button{height:23px;width:24px;color:#68758b}.browser-bottom .icon-button svg{width:14px;height:14px}.feed-browser .empty-state{padding:16px 3px}.feed-browser .empty-state>svg{width:24px;height:24px}.feed-browser .empty-state h3,.feed-browser .empty-state p,.feed-browser .empty-actions{display:none}.browser-open .browser-heading{justify-content:space-between;padding:4px 12px}.browser-open .browser-heading h2{display:block}.browser-open .browser-tabs{display:flex}.browser-open .library-content{padding:0 12px 9px}.browser-open .video-grid{grid-template-columns:1fr 1fr;gap:10px 8px}.browser-open .card-body{display:block}.browser-open .browser-pagination{display:flex;flex-wrap:wrap;gap:5px;padding:7px 11px}.browser-open .browser-pagination #page-label{flex:1;align-self:center}.browser-open .browser-pagination .icon-button{width:25px}.browser-open #jump-form{display:flex;gap:7px;width:100%;padding-top:3px}.browser-open #jump-form input{flex:1;padding:5px;font-size:10px}.browser-open #jump-form button{font-size:10px}.browser-open .browser-tip{display:block;text-align:center;color:#59667d;font-size:9px;padding:0 7px 5px}.browser-open .empty-state h3,.browser-open .empty-state p{display:block}.browser-open .empty-actions{display:grid;margin-top:10px}
-.feed-main{position:relative;display:flex;align-items:center;justify-content:center;min-width:0;min-height:0;padding:4px 14px;overflow:hidden}.feed-filter-chips{display:none}.feed-canvas{display:grid;grid-template-columns:minmax(0,1fr) var(--action);grid-template-rows:minmax(0,1fr) auto;column-gap:var(--stage-gap);flex:none;position:relative;width:100%;height:100%;min-width:0;min-height:0;background:none}
+.feed-main{position:relative;display:flex;align-items:center;justify-content:center;min-width:0;min-height:0;padding:4px 14px;overflow:hidden}.feed-filter-chips{display:none}.feed-canvas{display:grid;grid-template-columns:minmax(0,1fr) var(--action);grid-template-rows:minmax(0,1fr) auto auto;column-gap:var(--stage-gap);flex:none;position:relative;width:100%;height:100%;min-width:0;min-height:0;background:none}
 .player-stage{position:relative;grid-column:1;grid-row:1;min-width:0;min-height:0;overflow:hidden;border-radius:10px;background:#11151d;touch-action:pan-x;outline:none}.player-stage video{position:absolute;inset:0;width:100%;height:100%;display:block;object-fit:contain;background:#0c1018;cursor:pointer}.stage-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:54px;height:54px;border:1px solid #ffffff0b;background:#10152170;color:#fff;border-radius:50%;display:grid;place-items:center;z-index:3;backdrop-filter:blur(4px)}.stage-play svg{width:25px;height:25px;fill:currentColor;stroke:none;margin-left:3px}.player-stage.playing .stage-play{opacity:0;pointer-events:none}.player-stage.playing .stage-play:focus-visible{opacity:1;pointer-events:auto}.player-message{position:absolute;inset:0;z-index:5;background:#111620f5;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:11px;padding:20px;text-align:center}.player-message strong{font-size:13px;font-weight:500;color:#d8e0ef}.player-message p{font-size:11px;color:#818fa9;line-height:1.8;max-width:280px}.player-message .button{font-size:11px}.player-message.loading{background:#0d121c6b;pointer-events:none}.player-message.loading:before{content:"";width:22px;height:22px;border:2px solid #ffffff15;border-top-color:#a9b7cc;border-radius:50%;animation:media-spin .8s linear infinite}@keyframes media-spin{to{transform:rotate(360deg)}}
 .video-caption{position:absolute;left:0;right:0;bottom:0;padding:29px 14px 11px;background:linear-gradient(transparent,#0009);pointer-events:none;z-index:2}.feed-video-title{display:block;width:100%;color:#eef2fa;font-size:12px;font-weight:500;line-height:1.65;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;padding:0;pointer-events:auto;text-shadow:0 1px 4px #0005}.video-caption-meta{display:flex;align-items:center;gap:9px;flex-wrap:wrap;font-size:9px;color:#ffffff90;line-height:1.6;margin-top:3px}.video-caption-meta b{font-weight:400}.caption-score{color:#ffa4bd}.workspace-status{font-size:10px;line-height:1.6;color:#b7c3da;overflow-wrap:anywhere;flex-basis:100%}.workspace-status.error{color:#ffabbf}
 .feed-action-rail{grid-column:2;grid-row:1;align-self:center;display:flex;flex-direction:column;align-items:center;gap:16px}.feed-action{position:relative;display:flex;flex-direction:column;align-items:center;gap:5px;width:100%;padding:0;font-size:9px;color:#8491a9}.action-circle{height:43px;width:43px;border-radius:50%;background:#202631;display:grid;place-items:center;color:#e4ebf7;transition:background .15s}.action-circle svg{width:21px;height:21px}.feed-action:hover .action-circle{background:#2e3748}.favorite-button .action-circle{background:#2b2430}.favorite-button .action-circle svg{width:24px;height:24px;fill:currentColor;stroke:none}.favorite-button.selected{color:#ff89a7}.favorite-button.selected .action-circle{color:#ff4267;background:#ff42671c}.exclude-button.selected .action-circle{background:#ffffff16;color:#f0f4fc}.feed-action kbd{position:absolute;right:-3px;top:17px;font-size:8px;color:#53617a}.action-divider{height:1px;width:17px;background:#ffffff10}.navigate .action-circle{height:36px;width:36px;background:#171d28}.navigate .action-circle svg{width:20px;height:20px}.action-more .action-circle{width:25px;height:25px;background:none}.action-more svg{width:20px;height:20px}
 /* 轨道与视频共享第一列：range 不再使用浏览器默认的 150px 宽度。 */
 .player-controls{grid-column:1;grid-row:2;display:grid;grid-template-rows:8px 24px;height:32px;min-width:0;width:100%;padding:0;background:none}
-.feed-canvas .timeline{display:block;appearance:none;-webkit-appearance:none;width:100%;inline-size:100%;min-width:0;max-width:100%;height:8px;margin:0;padding:0;border:0;background:transparent;cursor:pointer;box-sizing:border-box;accent-color:#ff6589}.timeline::-webkit-slider-runnable-track{height:2px;border-radius:3px;background:linear-gradient(to right,#ff6589 0%,#ff6589 var(--progress,0%),#333c4d var(--progress,0%),#333c4d 100%)}.timeline::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:8px;height:8px;border:0;border-radius:50%;background:#ff6589;margin-top:-3px}.timeline::-moz-range-track{height:2px;border-radius:3px;background:#333c4d}.timeline::-moz-range-progress{height:2px;background:#ff6589;border-radius:3px}.timeline::-moz-range-thumb{width:8px;height:8px;border:0;border-radius:50%;background:#ff6589}
+.feed-canvas .timeline{display:block;appearance:none;-webkit-appearance:none;width:100%;inline-size:100%;min-width:0;max-width:100%;height:16px;margin:0;padding:0;border:0;background:transparent;cursor:pointer;box-sizing:border-box;accent-color:#ff6589}.timeline::-webkit-slider-runnable-track{height:4px;border-radius:3px;background:linear-gradient(to right,#ff6589 0%,#ff6589 var(--progress,0%),#333c4d var(--progress,0%),#333c4d 100%)}.timeline::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:12px;height:12px;border:0;border-radius:50%;background:#ff6589;margin-top:-4px}.timeline::-moz-range-track{height:4px;border-radius:3px;background:#333c4d}.timeline::-moz-range-progress{height:4px;background:#ff6589;border-radius:3px}.timeline::-moz-range-thumb{width:12px;height:12px;border:0;border-radius:50%;background:#ff6589}.player-controls:hover .timeline::-webkit-slider-runnable-track,.player-controls:hover .timeline::-moz-range-track,.player-controls:hover .timeline::-moz-range-progress{height:6px}.player-controls:hover .timeline::-webkit-slider-thumb,.player-controls:hover .timeline::-moz-range-thumb{width:14px;height:14px}.player-controls:hover .timeline::-webkit-slider-thumb{margin-top:-4px}
 .transport{display:flex;align-items:center;justify-content:space-between;gap:6px;height:24px;min-width:0}.transport-left,.transport-right{display:flex;align-items:center;gap:3px;min-width:0}.transport-right{margin-left:auto}.transport .icon-button{width:23px;height:23px;border-radius:4px}.transport .icon-button svg{width:14px;height:14px}.timecode{font-size:9px;font-variant-numeric:tabular-nums;color:#c1cde0;white-space:nowrap}.timecode span{color:#667792;margin-left:3px}.transport select{width:38px;height:22px;padding:0;border:0;background:none;color:#9eafc9;border-radius:4px;font-size:9px;cursor:pointer}.preload-status{display:block;width:5px;height:5px;margin-right:4px;font-size:0;flex-shrink:0}.preload-status.ready:before{content:"";display:block;width:4px;height:4px;border-radius:50%;background:#6d9c86}.middle-toggle{font-size:9px;color:#687a96;padding:3px 4px;border-radius:4px;white-space:nowrap}.middle-toggle[aria-pressed=true]{color:#c895ac;background:#ff426709}.feed-canvas[data-controls=compact] .middle-toggle,.feed-canvas[data-controls=narrow] .middle-toggle,.feed-canvas[data-controls=compact] .preload-status,.feed-canvas[data-controls=narrow] .preload-status{display:none}.feed-canvas[data-controls=narrow] .timecode span,.feed-canvas[data-controls=narrow] #capture-frame{display:none}.feed-canvas[data-controls=narrow] .video-caption-meta #current-meta{display:none}
 .feed-canvas:fullscreen{width:100vw!important;height:100dvh!important;max-width:none;margin:0;padding:6px 10px;background:#080c13;grid-template-columns:var(--media-width,minmax(0,1fr)) var(--action);grid-template-rows:var(--media-height,minmax(0,1fr)) auto;justify-content:center;align-content:center}
 .form-status{font-size:11px;line-height:1.8;color:#aebdd7;margin:0 22px 18px;overflow-wrap:anywhere}.form-status.error{color:#ff9db8}.task-inline-status{font-size:11px;line-height:1.8;color:#aebfd9;padding:0 0 12px;overflow-wrap:anywhere}.task-inline-status.error{color:#ff9db8}.advanced-search-options{border-top:1px solid var(--line);padding-top:13px}.advanced-search-options summary{font-size:11px;color:#8f9fbb}.advanced-search-options .form-grid{padding-top:15px}
@@ -157,22 +174,33 @@ dialog{width:min(700px,calc(100vw - 30px));max-height:90dvh;padding:0;margin:aut
 .frame-dialog{width:auto;min-width:min(360px,calc(100vw - 24px));max-width:min(1100px,calc(100vw - 24px));max-height:94dvh}.frame-image-wrap{display:flex;align-items:center;justify-content:center;background:#0b1019;min-height:120px;padding:0 15px 12px}.frame-image-wrap img{display:block;max-width:100%;max-height:calc(90dvh - 146px);object-fit:contain;border-radius:5px}.frame-footer{padding:13px 18px;display:flex;align-items:center;gap:10px;border-top:1px solid var(--line)}.frame-footer p{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;color:#939fb6}.frame-footer .button{font-size:11px;padding:8px 10px}
 .tasks-dialog.star-page{--surface:#1b1e28;--line:#ffffff10;--mint:#ff829f;--bg:#131720;width:calc(100vw - 36px);max-width:1480px;height:calc(100dvh - 32px);min-height:0;max-height:calc(100dvh - 32px);overflow:auto;background:#131720;border-radius:13px}.tasks-dialog .dialog-header{background:#191e29;z-index:8}.tasks-dialog .star-main{padding:22px;max-width:none}.tasks-dialog .star-intro{margin-bottom:17px}.tasks-dialog .star-intro h1{font-size:23px}.tasks-dialog .star-intro .eyebrow{display:none}.tasks-dialog .star-metrics>div{background:#1a202b}.tasks-dialog .star-panel{background:#1a202b}.tasks-dialog .star-panel-heading .eyebrow{color:#77859f}.tasks-dialog .star-task-card{background:#141b27;border-color:#ffffff10}.tasks-dialog .star-task-log,.tasks-dialog .star-task-config pre{background:#101620;color:#9daeca;border-color:#ffffff0c}.tasks-dialog .star-result-grid>div{background:#121a26;border-color:#ffffff10}.tasks-dialog .star-task-number{color:#71839e}.tasks-dialog .star-config-actions .primary,.tasks-dialog .star-task-card .primary{background:#ff4267;color:white;border-color:#ff4267}.tasks-dialog .star-progress>div{background:#ff6b8e}.tasks-dialog .star-progress{background:#ffffff0c}.tasks-dialog .star-pill[data-ready=true]{color:#b8d2c5;border-color:#ffffff20}.connection-status{font-size:11px;line-height:1.8;color:#8e9bb4;margin-top:12px}
 @media(max-width:1050px){.feed-topbar{padding-inline:12px;gap:11px}.feed-brand{min-width:92px}.feed-top-actions{min-width:225px;gap:8px}.feed-main{padding-inline:10px}.feed-page{--action:49px;--stage-gap:12px}.feed-position{font-size:9px}}
-@media(max-width:760px){.feed-page{--header-height:40px;--side:72px;--action:39px;--stage-gap:8px}.feed-topbar{padding-inline:9px;gap:8px}.feed-brand{min-width:25px}.feed-brand>span:not(.brand-mark){display:none}.feed-search{width:auto;max-width:none;flex:1;min-width:65px;height:27px;padding-left:7px}.feed-search input{font-size:10px}.feed-top-actions{min-width:0;gap:5px}.feed-position,.feed-config summary span,.quick-toggle svg,.quick-toggle .wide-only{display:none}.quick-toggle{font-size:9px;padding:5px 6px}.feed-top-actions>.icon-button{width:23px}.feed-config summary{padding:2px;min-height:25px}.feed-layout.browser-open{--side:72px}.feed-main{padding:4px}.browser-heading,.browser-open .browser-heading{height:32px;justify-content:center;padding:3px}.browser-open .browser-heading h2,.browser-open .browser-tabs,.browser-open .card-body,.browser-open #jump-form,.browser-open .browser-tip{display:none}.library-content,.browser-open .library-content{padding:0 6px 8px}.browser-open .video-grid{grid-template-columns:1fr;gap:9px}.thumbnail-button{border-radius:6px}.frame-expand{opacity:1;top:4px;right:4px;width:19px;height:19px}.frame-expand svg{width:11px;height:11px}.thumbnail-score{left:4px;top:5px}.thumbnail-score svg{width:11px;height:11px}.browser-pagination,.browser-open .browser-pagination{display:grid;grid-template-columns:1fr 1fr;padding:5px 5px 0;gap:0}.browser-pagination #page-label,.browser-open .browser-pagination #page-label{grid-column:1/-1;grid-row:1;font-size:8px;text-align:center}.browser-pagination .icon-button,.browser-open .browser-pagination .icon-button{width:100%;height:22px}.browser-bottom{padding:2px 3px 4px;gap:1px}.browser-bottom .icon-button{width:23px;height:22px}.feed-action-rail{gap:14px}.feed-action{font-size:8px;gap:4px}.action-circle{width:35px;height:35px}.action-circle svg{width:19px;height:19px}.favorite-button .action-circle svg{width:21px;height:21px}.navigate .action-circle{width:30px;height:30px}.navigate .action-circle svg{width:18px;height:18px}.feed-action kbd,.action-more{display:none}.player-stage{border-radius:7px}.video-caption{padding:24px 10px 8px}.feed-video-title{font-size:11px}.video-caption-meta{font-size:8px;gap:7px}.video-caption-meta #current-meta{display:none}.player-message{padding:13px}.player-message strong{font-size:12px}.player-message p{font-size:10px}.stage-play{width:44px;height:44px}.stage-play svg{width:22px;height:22px}.frame-footer{flex-wrap:wrap;padding:11px}.frame-footer p{flex-basis:100%}.tasks-dialog.star-page{width:calc(100vw - 16px);height:calc(100dvh - 16px);max-height:calc(100dvh - 16px)}.tasks-dialog .star-main{padding:14px}.tasks-dialog .star-metrics{grid-template-columns:1fr 1fr;gap:8px}.tasks-dialog .star-metrics>div{padding:12px}.tasks-dialog .star-metrics strong{font-size:22px}.tasks-dialog .star-layout{grid-template-columns:1fr}.tasks-dialog .star-intro h1{font-size:20px}.form-status{margin-inline:17px}}
+@media(max-width:760px){.feed-page{--header-height:40px;--side:72px;--action:39px;--stage-gap:8px}.feed-topbar{padding-inline:9px;gap:8px}.feed-brand{min-width:25px}.feed-brand>span:not(.brand-mark){display:none}.feed-search{width:auto;max-width:none;flex:1;min-width:65px;height:27px;padding-left:7px}.feed-search input{font-size:10px}.feed-top-actions{min-width:0;gap:5px}.feed-config summary span,.quick-toggle svg,.quick-toggle .wide-only{display:none}.quick-toggle{font-size:9px;padding:5px 6px}.feed-top-actions>.icon-button{width:23px}.feed-config summary{padding:2px;min-height:25px}.feed-layout.browser-open{--side:72px}.feed-main{padding:4px}.browser-heading,.browser-open .browser-heading{height:32px;justify-content:center;padding:3px}.browser-open .browser-heading h2,.browser-open .browser-tabs,.browser-open .card-body,.browser-open #jump-form,.browser-open .browser-tip{display:none}.library-content,.browser-open .library-content{padding:0 6px 8px}.browser-open .video-grid{grid-template-columns:1fr;gap:9px}.thumbnail-button{border-radius:6px}.frame-expand{opacity:1;top:4px;right:4px;width:19px;height:19px}.frame-expand svg{width:11px;height:11px}.thumbnail-score{left:4px;top:5px}.thumbnail-score svg{width:11px;height:11px}.browser-pagination,.browser-open .browser-pagination{display:grid;grid-template-columns:1fr 1fr;padding:5px 5px 0;gap:0}.browser-pagination #page-label,.browser-open .browser-pagination #page-label{grid-column:1/-1;grid-row:1;font-size:8px;text-align:center}.browser-pagination .icon-button,.browser-open .browser-pagination .icon-button{width:100%;height:22px}.browser-bottom{padding:2px 3px 4px;gap:1px}.browser-bottom .icon-button{width:23px;height:22px}.feed-action-rail{gap:14px}.feed-action{font-size:8px;gap:4px}.action-circle{width:35px;height:35px}.action-circle svg{width:19px;height:19px}.favorite-button .action-circle svg{width:21px;height:21px}.navigate .action-circle{width:30px;height:30px}.navigate .action-circle svg{width:18px;height:18px}.feed-action kbd,.action-more{display:none}.player-stage{border-radius:7px}.video-caption{padding:24px 10px 8px}.feed-video-title{font-size:11px}.video-caption-meta{font-size:8px;gap:7px}.video-caption-meta #current-meta{display:none}.player-message{padding:13px}.player-message strong{font-size:12px}.player-message p{font-size:10px}.stage-play{width:44px;height:44px}.stage-play svg{width:22px;height:22px}.frame-footer{flex-wrap:wrap;padding:11px}.frame-footer p{flex-basis:100%}.tasks-dialog.star-page{width:calc(100vw - 16px);height:calc(100dvh - 16px);max-height:calc(100dvh - 16px)}.tasks-dialog .star-main{padding:14px}.tasks-dialog .star-metrics{grid-template-columns:1fr 1fr;gap:8px}.tasks-dialog .star-metrics>div{padding:12px}.tasks-dialog .star-metrics strong{font-size:22px}.tasks-dialog .star-layout{grid-template-columns:1fr}.tasks-dialog .star-intro h1{font-size:20px}.form-status{margin-inline:17px}}
 @media(max-height:560px){.feed-action-rail{gap:8px}.feed-action kbd,.action-more,.action-divider{display:none}.action-circle{width:35px;height:35px}.navigate .action-circle{width:29px;height:29px}.feed-action{font-size:8px}.video-caption{padding-bottom:8px}.feed-video-title{font-size:11px}}
 @media(hover:none){.frame-expand{opacity:1}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important;animation-duration:.01ms!important}}
 
 /* 默认沉浸播放：工具覆盖画面，展开时也不改变视频大小。 */
 .feed-page:has(.browser-open){--side:238px}.feed-layout{height:100dvh}.feed-main{padding:3px 12px}.feed-canvas{grid-template-rows:minmax(0,1fr)}
-.feed-topbar{position:fixed;top:8px;left:calc(var(--side) + 12px);right:16px;height:var(--header-height);border:1px solid #ffffff12;border-radius:10px;background:#151720ed;box-shadow:0 6px 24px #0004;backdrop-filter:blur(16px);opacity:0;visibility:hidden;transform:translateY(-6px);pointer-events:none;transition:opacity .16s,transform .16s,visibility .16s}
+.feed-topbar{position:fixed;top:calc(var(--core-h,0px) + 8px);left:calc(var(--side) + 12px);right:16px;height:var(--header-height);border:1px solid #ffffff12;border-radius:10px;background:#151720ed;box-shadow:0 6px 24px #0004;backdrop-filter:blur(16px);opacity:0;visibility:hidden;transform:translateY(-6px);pointer-events:none;transition:opacity .16s,transform .16s,visibility .16s}
 .tools-open .feed-topbar{opacity:1;visibility:visible;transform:none;pointer-events:auto}.feed-brand{min-width:70px}.feed-top-actions{min-width:0}.feed-search{max-width:none}.feed-position{max-width:150px;overflow:hidden;text-overflow:ellipsis}
 .player-stage{border-radius:6px;background:#08090c}.player-stage video{background:#08090c}#transition-frame{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;z-index:2;pointer-events:none;background:#08090c}.player-stage[aria-busy=true] .stage-play{opacity:0;pointer-events:none}
 .player-message.loading{inset:12px auto auto 50%;transform:translateX(-50%);width:max-content;max-width:90%;padding:8px 12px;gap:8px;flex-direction:row;border:1px solid #ffffff12;border-radius:20px;background:#171a23d9;backdrop-filter:blur(8px)}.player-message.loading:before{width:12px;height:12px}.player-message.loading strong{font-size:10px}.player-message.loading p{display:none}
-.player-controls{position:absolute;z-index:6;left:0;bottom:0;width:var(--media-width);height:10px;grid-template-rows:10px;overflow:hidden;padding:0;background:none;transition:height .15s}.player-controls .timeline{height:10px}.player-controls .transport{visibility:hidden;padding:0 6px}.tools-open .player-controls{height:40px;grid-template-rows:10px 26px;background:linear-gradient(transparent,#000c);overflow:visible}.tools-open .player-controls .transport{visibility:visible}.player-controls:focus-within{height:40px;grid-template-rows:10px 26px;background:#101218d9}.player-controls:focus-within .transport{visibility:visible}
-.video-caption{bottom:12px;z-index:4;opacity:0;visibility:hidden;transition:opacity .15s}.tools-open .video-caption,.player-stage:not(.playing):not([aria-busy=true]) .video-caption,.video-caption:has(.workspace-status:not([hidden])){opacity:1;visibility:visible}.tools-open .video-caption{bottom:40px}.video-caption .feed-video-title{pointer-events:none}.tools-open .video-caption .feed-video-title,.player-stage:not(.playing) .feed-video-title{pointer-events:auto}
+.player-controls{position:absolute;z-index:6;left:0;bottom:0;width:var(--media-width);height:46px;grid-template-rows:16px 26px;overflow:visible;padding:0;background:linear-gradient(transparent,#000c);transition:height .15s}.player-controls .timeline{height:16px}.player-controls .transport{visibility:visible;padding:0 6px}.tools-open .player-controls{height:46px;grid-template-rows:16px 26px;background:linear-gradient(transparent,#000c);overflow:visible}.tools-open .player-controls .transport{visibility:visible}.player-controls:focus-within{height:46px;grid-template-rows:16px 26px;background:#101218d9}.player-controls:focus-within .transport{visibility:visible}
+.video-caption{bottom:48px;z-index:4;opacity:0;visibility:hidden;transition:opacity .15s}.tools-open .video-caption,.player-stage:not(.playing):not([aria-busy=true]) .video-caption,.video-caption:has(.workspace-status:not([hidden])){opacity:1;visibility:visible}.tools-open .video-caption{bottom:48px}.video-caption .feed-video-title{pointer-events:none}.tools-open .video-caption .feed-video-title,.player-stage:not(.playing) .feed-video-title{pointer-events:auto}
+/* 播放时隐藏页面顶部核心流程条（粘贴链接 / 一键索引 / 一键同步到云 / 任务中心
+   / 状态文案）：body.video-playing 由 updatePlaybackUI 随播放状态切换，
+   隐藏与显示都延迟 3 秒才改变，播放中不闪现。无过渡动效，避免动画引起
+   的布局抖动。顶栏（.feed-topbar）与标题仍按原有 tools-open / playing 规则。 */
+body.video-playing #core-flow{display:none}
+/* 播放区底部状态栏：当前进度与计数（待筛 / 喜欢 / 点踩），常驻显示。 */
+.player-status-bar{grid-column:1 / -1;grid-row:3;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:5px 2px 0;font-size:10px;color:#8b99b3;font-variant-numeric:tabular-nums}#status-progress{font-weight:600;color:#d5deee;white-space:nowrap}.thumb-rate-banner{grid-column:1 / -1;grid-row:2;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 10px;margin-top:6px;border:1px solid #ffb45455;border-radius:8px;background:#ffb45414;color:#ffd9a0;font-size:11px}.thumb-rate-banner[hidden]{display:none}.thumb-rate-banner .button{flex:none;padding:4px 10px;font-size:11px}#status-counts{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.player-status-bar b{color:#c9d2e4;font-weight:500}
+/* 视频范围页签上的数量角标（待筛 / 喜欢 / 点踩），由 loadStats 回填 */
+.tab-count{font-size:9px;color:#8b99b3;font-variant-numeric:tabular-nums}
+.browser-tabs button.active .tab-count{color:#ff94ac}
 .rail-tools .action-circle{width:30px;height:30px;background:#1b202b;border:1px solid #ffffff10}.rail-tools svg{width:16px;height:16px}.rail-tools[aria-expanded=true]{color:#ff94ac}.rail-tools[aria-expanded=true] .action-circle{color:#ff94ac;border-color:#ff759244;background:#ff426712}.feed-canvas:fullscreen{grid-template-rows:var(--media-height);padding:3px 8px}.feed-canvas:fullscreen .player-controls{left:calc((100% - var(--media-width) - var(--action) - var(--stage-gap))/2);bottom:calc((100% - var(--media-height))/2)}
 .thumbnail-button img{transition:opacity .12s}.library-content{overflow-anchor:none}.browser-pagination #page-label{font-size:9px;white-space:nowrap}.browser-tip{line-height:1.7}
-@media(max-width:760px){.feed-page:has(.browser-open){--side:72px}.feed-main{padding:3px 4px}.feed-topbar{left:calc(var(--side) + 5px);right:5px;top:5px;padding:0 7px;gap:6px}.feed-topbar .feed-brand,.feed-topbar .feed-position{display:none}.feed-search{min-width:65px;max-width:none;margin:0;flex:1}.feed-top-actions{gap:5px}.rail-tools .action-circle{width:27px;height:27px}.feed-top-actions .quick-toggle{padding:4px}.feed-config summary{padding:0}.feed-top-actions>#undo-score{width:22px}}
+@media(max-width:760px){.feed-page:has(.browser-open){--side:72px}.feed-main{padding:3px 4px}.feed-topbar{left:calc(var(--side) + 5px);right:5px;top:calc(var(--core-h,0px) + 5px);padding:0 7px;gap:6px}.feed-topbar .feed-brand,.feed-topbar .feed-position{display:none}.feed-search{min-width:65px;max-width:none;margin:0;flex:1}.feed-top-actions{gap:5px}.rail-tools .action-circle{width:27px;height:27px}.feed-top-actions .quick-toggle{padding:4px}.feed-config summary{padding:0}.feed-top-actions>#undo-score{width:22px}.feed-position{display:block;font-size:11px;max-width:110px;overflow:hidden;text-overflow:ellipsis}.player-status-bar{font-size:12px;padding:8px 2px 2px;gap:8px}#status-progress{font-size:13px}}
 @media(prefers-reduced-motion:reduce){.feed-topbar,.player-controls,.video-caption,.thumbnail-button img{transition:none}}
 .video-card.current .thumbnail-button{border-color:#ff547c;box-shadow:0 0 0 1px #ff547c,0 0 18px #ff42671f}.video-card .now-playing{font-size:9px;line-height:1;left:3px;bottom:19px;padding:4px 5px;display:flex;align-items:center;gap:3px;color:#fff;background:#e33762;border-radius:4px}.now-playing:before{width:3px;height:3px;border-radius:50%;background:#fff;box-shadow:none}.video-card.visited:not(.current) .preview-count{color:#ffb5c8}
 
@@ -224,19 +252,20 @@ dialog{width:min(700px,calc(100vw - 30px));max-height:90dvh;padding:0;margin:aut
 <section id="core-flow" aria-label="115 核心流程">
   <div class="core-flow-row">
     <div class="core-flow-step core-url-step"><span class="core-step-num">1</span><input id="core-url" type="text" placeholder="粘贴 115 分享链接 / 文件夹网址，例如 https://115.com/?cid=…" autocomplete="off" spellcheck="false" aria-label="115 分享链接或文件夹网址"><span class="core-cid" id="core-cid" title="待筛选目录 CID">CID：—</span></div>
-    <div class="core-flow-actions"><button class="button primary" type="button" id="core-index-btn"><span class="core-step-num">2</span>一键索引</button><button class="button primary" type="button" id="core-sync-btn"><span class="core-step-num">3</span>一键同步到云</button><button class="button" type="button" data-action="tasks" title="115 配置、结算归档、不喜欢数据、任务历史">更多设置 · 结算归档</button></div>
+    <div class="core-flow-actions"><button class="button primary" type="button" id="core-index-btn"><span class="core-step-num">2</span>一键索引</button><button class="button primary" type="button" id="core-sync-btn"><span class="core-step-num">3</span>一键同步到云</button><button class="button" type="button" data-action="tasks" title="任务中心：115 配置、结算归档、不喜欢数据、任务历史">任务中心</button></div>
   </div>
   <p class="core-flow-status" id="core-flow-status" role="status"><span id="core-flow-status-text">粘贴 115 文件夹网址，自动提取 CID；再点「一键索引」或「一键同步到云」。</span><span class="core-flow-counts">待筛选 <b id="core-pending">—</b> · 精选 <b id="core-starred">—</b></span></p>
 </section>
 <header class="feed-topbar" id="main-tools" inert aria-hidden="true">
   <a class="feed-brand" href="#" aria-label="映选视频库"><span class="brand-mark"><svg><use href="#i-play"/></svg></span><span>映选</span><span class="brand-note">视频快速筛选</span></a>
   <form id="search-form" class="feed-search" role="search"><svg><use href="#i-search"/></svg><input id="search-input" type="search" placeholder="搜索视频名称或路径" aria-label="搜索视频" autocomplete="off" maxlength="500"><button type="button" class="icon-button" id="filter-button" aria-label="搜索配置与排序" title="搜索配置与排序"><svg><use href="#i-filter"/></svg><span id="filter-dot" class="tiny-dot" hidden></span></button></form>
-  <div class="feed-top-actions"><button class="quick-toggle" id="cloud-sync-button" title="同步 115 待筛选目录并 SHA1 去重">同步云端</button><button class="quick-toggle" id="cloud-commit-button" style="background:#ff4267;border-color:#ff4267;color:#fff" title="结算归档并下载 (3%)：云端集中移动 + 批量清理 + Aria2 下载">结算归档 (3%)</button><button id="undo-score" class="icon-button" aria-label="撤销上次评分" title="撤销上次评分 · Ctrl+Z" disabled><svg><use href="#i-undo"/></svg></button><button class="quick-toggle" id="unseen-toggle" aria-pressed="false" title="只看未看"><svg><use href="#i-play"/></svg><span><span class="wide-only">只看</span>未看</span></button><span id="preview-position" class="feed-position" aria-live="polite">— / —</span><details class="feed-config" id="config-menu"><summary title="配置与任务"><svg><use href="#i-settings"/></svg><span>配置</span></summary><div class="feed-menu"><button data-action="search-config">搜索与排序</button><button id="shuffle-button" hidden>重新随机排序</button><button data-action="settings">播放偏好</button><button data-action="tasks">115 账户与目录配置</button><button data-action="tasks">云端归档与任务中心</button><button data-action="connection">后端连接</button><button id="refresh-button" data-action="refresh">刷新视频库</button><button data-action="shortcuts">快捷键</button></div></details></div>
+  <div class="feed-top-actions"><button class="quick-toggle" id="cloud-sync-button" title="同步 115 待筛选目录并 SHA1 去重">同步云端</button><button class="quick-toggle" id="cloud-commit-button" style="background:#ff4267;border-color:#ff4267;color:#fff" title="结算归档并下载 (3%)：云端集中移动 + 批量清理 + Aria2 下载">结算归档 (3%)</button><button class="quick-toggle" id="local-settle-button" title="本地结算：在任务中心预览或执行（精选 → _dy_精选，淘汰 → _dy_回收站）">结算本地</button><button id="undo-score" class="icon-button" aria-label="撤销上次评分" title="撤销上次评分 · Ctrl+Z" disabled><svg><use href="#i-undo"/></svg></button><button class="quick-toggle" id="unseen-toggle" aria-pressed="false" title="只看未看"><svg><use href="#i-play"/></svg><span><span class="wide-only">只看</span>未看</span></button><span id="preview-position" class="feed-position" aria-live="polite">— / —</span><details class="feed-config" id="config-menu"><summary title="配置与任务"><svg><use href="#i-settings"/></svg><span>配置</span></summary><div class="feed-menu"><button data-action="search-config">搜索与排序</button><button id="shuffle-button" hidden>重新随机排序</button><button data-action="settings">播放偏好</button><button data-action="tasks">115 账户与目录配置</button><button data-action="tasks">云端归档与任务中心</button><button data-action="connection">后端连接</button><button id="refresh-button" data-action="refresh">刷新视频库</button><button data-action="shortcuts">快捷键</button></div></details></div>
 </header>
 <div class="feed-layout" id="feed-layout">
   <aside class="feed-browser" id="video-browser" aria-label="视频缩略图侧栏">
     <div class="browser-heading"><h2>视频预览 <span id="result-count">0</span></h2><button id="sidebar-toggle" class="icon-button" aria-label="展开截图侧栏" aria-expanded="false" aria-controls="video-browser" title="展开 / 收起缩略图 · B"><svg><use href="#i-grid"/></svg></button></div>
-    <nav class="browser-tabs main-nav" aria-label="视频范围"><button data-library="0" class="active">全部</button><button data-library="unrated">待筛</button><button data-library="5">喜欢</button><button data-library="1">点踩</button></nav>
+    <nav class="browser-tabs main-nav" aria-label="视频范围"><button data-library="0" class="active">全部</button><button data-library="unrated">待筛 <span class="tab-count" id="tab-unrated-count"></span></button><button data-library="5">喜欢 <span class="tab-count" id="tab-favorites-count"></span></button><button data-library="1">点踩 <span class="tab-count" id="tab-excluded-count"></span></button></nav>
+    <nav class="browser-tabs source-nav" aria-label="视频来源"><button data-source="all" class="active">全部来源</button><button data-source="cloud">115 云端</button><button data-source="local">本地</button></nav>
     <div class="library-content" tabindex="0" aria-label="可滚动的视频缩略图"><div id="video-grid" class="video-grid" aria-live="polite"></div><div id="empty-state" class="empty-state" hidden></div></div>
     <div class="browser-pagination"><button id="previous-page" class="icon-button" aria-label="前 30 条缩略图" title="前 30 条"><svg class="rotate-180"><use href="#i-chevron"/></svg></button><span id="page-label">1 / 1</span><button id="next-page" class="icon-button" aria-label="后 30 条缩略图" title="后 30 条"><svg><use href="#i-chevron"/></svg></button><form id="jump-form"><input id="jump-input" type="number" min="1" placeholder="视频序号" aria-label="跳转到视频序号"><button class="text-button" type="submit">跳转</button></form></div>
     <p class="browser-tip">当前窗口 30 条 · 点击播放 / 回看</p><div class="browser-bottom"><button class="icon-button" data-action="directories" title="视频目录" aria-label="管理视频目录"><svg><use href="#i-folder"/></svg></button><button class="icon-button" data-action="shortcuts" title="快捷键" aria-label="快捷键"><svg><use href="#i-info"/></svg></button></div>
@@ -245,6 +274,8 @@ dialog{width:min(700px,calc(100vw - 30px));max-height:90dvh;padding:0;margin:aut
     <section class="player-stage" id="player-stage" aria-label="视频画面" tabindex="0"><video id="player" playsinline crossorigin="anonymous" preload="metadata" aria-label="当前视频"></video><video data-preload playsinline crossorigin="anonymous" muted preload="none" hidden aria-hidden="true"></video><video data-preload playsinline crossorigin="anonymous" muted preload="none" hidden aria-hidden="true"></video><video data-preload playsinline crossorigin="anonymous" muted preload="none" hidden aria-hidden="true"></video><canvas id="transition-frame" hidden aria-hidden="true"></canvas><button id="stage-play" class="stage-play" aria-label="播放或暂停"><svg><use href="#i-play"/></svg></button><div id="player-message" class="player-message" role="status"><strong>正在连接视频库</strong><p>可在配置中设置后端地址与视频目录</p><button class="button" data-action="connection">设置后端连接</button></div><div class="video-caption"><button class="feed-video-title" id="current-title" data-action="video-info" title="查看视频信息">还没有选择视频</button><div class="video-caption-meta"><span id="current-meta"></span><span class="caption-views">预览 <b id="current-preview-count">0</b> 次</span><span id="current-score" class="caption-score"></span><span id="workspace-status" class="workspace-status" role="status" hidden></span></div></div></section>
     <aside class="feed-action-rail" aria-label="筛选与切换"><button class="feed-action favorite-button" id="favorite-button" aria-label="喜欢当前视频，评为五分" title="喜欢 · 5 分 · Z"><span class="action-circle"><svg><use href="#i-heart"/></svg></span><span>喜欢</span><kbd>Z</kbd></button><button class="feed-action exclude-button" id="exclude-button" aria-label="点踩当前视频，评为一分" title="点踩 · 1 分 · X"><span class="action-circle"><svg><use href="#i-dislike"/></svg></span><span>点踩</span><kbd>X</kbd></button><button class="feed-action dislike-button" id="dislike-button" aria-label="不喜欢当前视频，记入不喜欢数据集" title="不喜欢 · 记入数据集 · D"><span class="action-circle"><svg><use href="#i-ban"/></svg></span><span>不喜欢</span><kbd>D</kbd></button><span class="action-divider"></span><button class="feed-action navigate" id="previous-video" aria-label="上一个视频" title="上一条 · ↑"><span class="action-circle"><svg><use href="#i-up"/></svg></span><span>上一条</span></button><button class="feed-action navigate" id="next-video" aria-label="下一个视频" title="下一条 · ↓"><span class="action-circle"><svg><use href="#i-down"/></svg></span><span>下一条</span></button><button class="feed-action action-more" data-action="video-info" aria-label="视频信息与更多操作" title="视频信息"><span class="action-circle"><svg><use href="#i-more"/></svg></span></button><button id="tools-toggle" class="feed-action rail-tools" aria-controls="main-tools playback-tools" aria-expanded="false" title="展开搜索与播放工具 · T"><span class="action-circle"><svg><use href="#i-settings"/></svg></span><span id="tools-toggle-label">工具</span></button></aside>
     <footer class="player-controls" id="playback-tools"><input id="timeline" class="timeline" type="range" min="0" max="1000" value="0" aria-label="播放进度"><div class="transport"><div class="transport-left"><button id="toggle-play" class="icon-button" aria-label="播放或暂停" title="播放 / 暂停 · 空格"><svg><use href="#i-play"/></svg></button><span id="play-time" class="timecode">00:00 <span>/ 00:00</span></span></div><div class="transport-right"><span id="preload-status" class="preload-status" title="自动预加载相邻视频"></span><button id="middle-toggle" class="middle-toggle" aria-pressed="true" title="切换视频后自动从 50% 位置开始播放">中段起播</button><button class="icon-button" id="capture-frame" aria-label="查看并保存当前截图" title="截图 · C"><svg><use href="#i-camera"/></svg></button><select id="playback-rate" aria-label="播放速度"><option value="0.5">0.5×</option><option value="1">1×</option><option value="1.5">1.5×</option><option value="2">2×</option><option value="3">3×</option></select><button id="mute-button" class="icon-button" aria-label="开启声音" title="声音 · M"><svg><use href="#i-muted"/></svg></button><button id="fullscreen-button" class="icon-button" aria-label="全屏播放" title="全屏 · F"><svg><use href="#i-fullscreen"/></svg></button></div></div></footer>
+    <div id="thumb-rate-banner" class="thumb-rate-banner" role="status" hidden><span class="thumb-rate-text"></span><button class="button" type="button" id="thumb-rate-resume">继续加载</button></div>
+    <div id="player-status-bar" class="player-status-bar" role="status"><span id="status-progress">还没有视频</span><span id="status-counts">待筛 <b>—</b> · 喜欢 <b>—</b> · 点踩 <b>—</b></span></div>
   </div></main>
 </div>
 <dialog id="app-dialog" aria-labelledby="dialog-title"><div class="dialog-header"><h2 id="dialog-title"></h2><button id="close-dialog" class="icon-button" aria-label="关闭窗口"><svg><use href="#i-close"/></svg></button></div><div id="dialog-content"></div><p id="dialog-status" class="form-status" role="status" hidden></p></dialog>
@@ -266,6 +297,7 @@ dialog{width:min(700px,calc(100vw - 30px));max-height:90dvh;padding:0;margin:aut
           <fieldset id="config-fields" disabled>
             <label class="form-field">当前 SQLite 状态库<input id="database-path" readonly aria-label="当前视频数据库"><small>保存云端 file_id、pickcode、sha1、rel_path 与播放链接 TTL 缓存。</small></label>
             <label class="form-field">115 Cookie（留空则沿用已保存或 115-cookies.txt）<input name="cookie" type="password" placeholder="UID=...; CID=...; SEID=..." autocomplete="off"><small id="cookie-status-hint">支持直接粘贴浏览器 Cookie，或留空使用同目录 115-cookies.txt（支持扫码自动刷新）。</small></label>
+            <div style="display:flex;align-items:center;gap:10px;margin:-4px 0 12px"><button class="button" type="button" id="cookie-quick-import-btn">快捷输入 Cookie JSON</button><small style="color:#808596;font-size:11px">粘贴浏览器插件导出的 JSON 数组，一键导入并保存</small></div>
             <label class="form-field">115-cookies.txt 路径<input name="cookie_file" placeholder="115-cookies.txt" autocomplete="off"></label>
             <label class="form-field">云端待筛选目录 (INBOX_CID 或路径)<input name="inbox_cid" placeholder="例如 /待筛选目录 或 123456789012345678" autocomplete="off"><small>支持填写 115 目录数字 CID 或云端路径，同步时将递归遍历并记录相对路径。</small></label>
             <label class="form-field">云端精选集中目录 (TARGET_CID 或路径)<input name="target_cid" placeholder="例如 /精选集中营 或 987654321098765432" autocomplete="off"><small>若目录不存在将自动创建；结算时按原目录相对路径集中移动至此。</small></label>
@@ -291,6 +323,9 @@ dialog{width:min(700px,calc(100vw - 30px));max-height:90dvh;padding:0;margin:aut
             <article class="star-task-card"><span class="star-task-number">02 / SYNC</span><h3>同步 115 目录并去重</h3><p>递归拉取待筛选目录元数据与封面，利用 115 原生 SHA1 秒级拦截历史重复视频。</p><div><button class="button primary" type="button" data-launch="sync_cloud" data-dry="false">立即同步</button></div></article>
             <article class="star-task-card"><span class="star-task-number">03 / CLOUD MOVE</span><h3>仅云端集中移动精选</h3><p>仅执行云端 fs_move（保持原目录相对路径），暂不删除淘汰视频与推送下载。</p><div><button class="button" type="button" data-launch="cloud_move_only" data-dry="true">预览数量</button><button class="button primary" type="button" data-launch="cloud_move_only" data-dry="false">执行移动</button></div></article>
             <article class="star-task-card"><span class="star-task-number">04 / ARIA2</span><h3>仅推送 Aria2 下载</h3><p>将尚未落盘的精选视频逐个获取原画直链并推送到本地 Aria2（保持相对路径）。</p><div><button class="button" type="button" data-launch="aria2_download" data-dry="true">预览数量</button><button class="button primary" type="button" data-launch="aria2_download" data-dry="false">推送下载</button></div></article>
+            <article class="star-task-card"><span class="star-task-number">05 / SIZE MOVE</span><h3>按大小整理视频</h3><p>把待筛选目录里小于阈值的视频移到“小于”子文件夹、大于等于阈值的视频移到“大于”子文件夹，保持原相对路径，方便之后批量下载到本地查看。只移动，不删除，不取直链。移出大文件后，可用下面“标记小文件已索引”把剩余小文件记为已索引——它们已在平台内（云端记录 + 文件身份缓存），筛选直接走 115，无需下载到本地、也无需本地重索引。</p><div class="size-hist" id="size-hist"><div class="size-hist-bars" id="size-hist-bars"><p class="subtle">正在加载大小分布…</p></div><p class="subtle">小文件（小于阈值）</p><div class="size-controls"><label>阈值 <input id="size-threshold" type="number" min="10" max="10240" step="10" value="1024"> MB</label><span class="size-quick"><button type="button" data-size-quick="300">300MB</button><button type="button" data-size-quick="500">500MB</button><button type="button" data-size-quick="1024">1GB</button><button type="button" data-size-quick="2048">2GB</button></span></div><div class="size-controls"><label>目标文件夹 <input id="size-folder" type="text" value="小于1GB" maxlength="50"></label><button class="text-button" id="size-refresh" type="button">刷新统计</button></div><p class="size-preview" id="size-preview"></p><p class="subtle">大文件（大于等于阈值）</p><div class="size-controls"><label>阈值 <input id="size-threshold-large" type="number" min="10" max="10240" step="10" value="1024"> MB</label><span class="size-quick"><button type="button" data-size-quick-large="300">300MB</button><button type="button" data-size-quick-large="500">500MB</button><button type="button" data-size-quick-large="1024">1GB</button><button type="button" data-size-quick-large="2048">2GB</button></span></div><div class="size-controls"><label>目标文件夹 <input id="size-folder-large" type="text" value="大于1GB" maxlength="50"></label></div><p class="size-preview" id="size-preview-large"></p></div><div><button class="button" type="button" data-launch="move_small_videos" data-dry="true">预览数量（小）</button><button class="button primary" type="button" data-launch="move_small_videos" data-dry="false">执行移动（小）</button></div><div style="margin-top:6px"><button class="button" type="button" data-launch="move_large_videos" data-dry="true">预览数量（大）</button><button class="button primary" type="button" data-launch="move_large_videos" data-dry="false">执行移动（大）</button></div><div style="margin-top:6px"><button class="button" type="button" data-launch="mark_small_indexed" data-dry="true">预览数量（标记）</button><button class="button primary" type="button" data-launch="mark_small_indexed" data-dry="false">标记小文件已索引</button></div></article>
+            <article class="star-task-card"><span class="star-task-number">06 / THUMBNAIL PREFETCH</span><h3>后台预取封面</h3><p>按低频逐个截取中间帧存到本地（只取还没有本地封面的视频，待筛优先），播放时直接读本地文件，不用再集中取播放链接。云端用 m3u8 截帧、本地用电脑直链截帧，都不取下载直链；每张之间默认停 10 秒，可随时取消。</p><div class="size-controls"><label>间隔 <input id="prefetch-interval" type="number" min="5" max="60" step="1" value="10"> 秒/张</label><label>最多 <input id="prefetch-max" type="number" min="1" max="500" step="10" value="100"> 张</label></div><p class="size-preview" id="prefetch-preview">默认 100 张约 17 分钟；已有本地封面的视频自动跳过，重跑会接着做剩下的。</p><div><button class="button" type="button" data-launch="prefetch_thumbnails" data-dry="true">预览数量</button><button class="button primary" type="button" data-launch="prefetch_thumbnails" data-dry="false">开始预取</button></div></article>
+            <article class="star-task-card"><span class="star-task-number">07 / LOCAL SOURCE</span><h3>本地来源：Windows 电脑视频</h3><p>在 Windows 电脑上运行下面的客户端脚本（只需 Python 标准库），把打印的订阅链接粘贴到这里点「同步本地」，就能用同一套流程筛选电脑上的视频：播放经 Mac 同源代理中转，结算时精选移到电脑上的 _dy_精选 文件夹、淘汰移到 _dy_回收站（只移动，不删除）。同步按文件头部哈希（前 1MB）去重；广告视频可用客户端 --hash 取头部哈希，导入不喜欢数据集后自动跳过。不走 115，不走 Aria2。</p><div class="tool-buttons" style="margin-bottom:12px"><a class="button" href="/dy/download/local-client.py" download="local_client.py">下载 local_client.py</a><a class="button" href="/dy/download/local-client.bat" download="local_client.bat">下载 local_client.bat</a><a class="button" href="/dy/api/cache/export" download="dy-cache-manifest.json">下载缓存清单</a></div><p class="subtle">缓存清单（可选加速）：先同步一次 115 或本地，服务端会把已知的哈希记进文件身份缓存；下载清单后传给客户端 --cache，清单里有的文件直接复用清单里的哈希（115 文件用全文件哈希、本地文件用头部哈希）、不读文件现算。清单里没有的照常现算；不传清单时行为与原来完全一致。</p><label class="form-field">订阅链接（客户端运行时打印）<input id="local-sub-url" type="text" placeholder="http://192.168.x.x:18950/sub?token=…" autocomplete="off" spellcheck="false"></label><p class="size-preview" id="local-sync-status">未连接本地客户端。</p><div class="size-controls"><label>精选目标文件夹 <input id="local-settle-folder" type="text" value="_dy_精选" maxlength="50"></label></div><div><button class="button primary" type="button" id="local-sync-btn">同步本地</button></div><div style="margin-top:6px"><button class="button" type="button" data-launch="settle_local" data-dry="true">预览数量</button><button class="button primary" type="button" data-launch="settle_local" data-dry="false">结算本地</button></div></article>
           </div>
           <p class="star-task-hint">提示：按 Z 标为精选（5 分），按 X 标为淘汰（1 分），打标毫秒级写入本地 SQLite，确认无误后点击「执行结算」。</p>
         </section>
@@ -309,6 +344,7 @@ dialog{width:min(700px,calc(100vw - 30px));max-height:90dvh;padding:0;margin:aut
         <button class="button" type="button" id="dislike-refresh-btn">刷新列表</button>
       </div>
       <p class="subtle" id="dislike-import-status" hidden></p>
+      <p class="subtle">本地视频：用 <code>python local_client.py --hash "文件路径"</code> 取头部哈希，写进 .txt（每行一个）再点「后台导入」即可；同步时自动跳过已在数据集中的视频。</p>
       <div class="star-history-scroll" style="max-height:220px;overflow:auto"><table class="star-history-table"><thead><tr><th>SHA1</th><th>名称</th><th>来源</th><th>操作</th></tr></thead><tbody id="dislike-list"><tr><td colspan="4" class="star-placeholder">暂无数据</td></tr></tbody></table></div>
     </section>
     </details>
@@ -347,7 +383,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   let BASE = sameOriginBase;
   try { BASE = normalizeBackend(store.get('backend',sameOriginBase)); } catch { store.set('backend',sameOriginBase); }
-  const defaults = {search:'', exclude:'', score:'0', tags:'', size:'', untagged:'0', directory:'', previewed:'', sort_by:'path', sort_order:'auto'};
+  const defaults = {search:'', exclude:'', score:'0', tags:'', size:'', untagged:'0', directory:'', previewed:'', sort_by:'path', sort_order:'auto', source:'all'};
   const sortOptions = [['','最近导入'],['oldest','最早导入'],['filename','文件名'],['path','完整路径（含文件名）'],['size','文件大小'],['score','评分'],['least_viewed','预览最少'],['most_viewed','预览最多'],['random','随机排序']];
   const settings = Object.assign({autoplay:true, autoNext:false, autoSkip:false, seekMiddle:true, advanceAfterRating:false, preloadNext:true, muted:true, rate:1}, store.get('settings', {}));
   if (settings.middleStartVersion !== 1) { settings.seekMiddle = true; settings.middleStartVersion = 1; store.set('settings',settings); }
@@ -443,6 +479,9 @@ document.addEventListener('DOMContentLoaded', () => {
   window.VideoLibraryAPI = Object.freeze({base:BASE,request:api});
   /* 核心流程条（2026-11-14 UI 优化）：同步后刷新视频库，与顶部“同步云端”按钮一致。 */
   window.__dyReloadGrid = () => { void Promise.all([fetchStats(), loadPage(1, 0, {autoplay:false})]); };
+  /* move_large 成功后自动切目录（供任务中心脚本调用）：把当前目录切到指定
+     rel_path 前缀（如“大于1GB”），并只看云端文件——刚移过去的大文件就在那里。 */
+  window.__dyNavigateToDirectory = (directory) => applyFilters({directory, source: 'cloud'});
   const post = (path, body, options = {}) => api(path, {method:'POST', body, ...options});
   let statusTimer, undoPending = false;
   const ratingHistory = [];
@@ -480,6 +519,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!['auto','asc','desc'].includes(state.filters.sort_order)) state.filters.sort_order = 'auto';
     if (!['','0','1'].includes(state.filters.previewed)) state.filters.previewed = '';
     if (!['0','1','2'].includes(state.filters.untagged)) state.filters.untagged = '0';
+    if (!['all','cloud','local'].includes(state.filters.source)) state.filters.source = 'all';
     const saved = store.get('position', {});
     const index = params.has('index') ? Number(params.get('index')) : saved.query === queryParams().toString() ? saved.index : 0;
     return Number.isSafeInteger(index) && index >= 0 ? index : 0;
@@ -495,11 +535,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const name = names[state.filters.score] || `${state.filters.score} 分视频`;
     document.title = `${name} · 映选`;
     document.querySelectorAll('.main-nav [data-library]').forEach(el => { el.classList.toggle('active',el.dataset.library === state.filters.score); el.setAttribute('aria-current',el.dataset.library === state.filters.score ? 'page' : 'false'); el.title = names[el.dataset.library]; });
+    document.querySelectorAll('.source-nav [data-source]').forEach(el => el.classList.toggle('active',el.dataset.source === state.filters.source));
     $('search-input').value = state.filters.search;
     $('shuffle-button').hidden = state.filters.sort_by !== 'random';
-    const labels = {search:'搜索',exclude:'排除关键词',tags:'标签',size:'大小（MB）',untagged:'标签状态',directory:'目录',previewed:'播放状态',sort_by:'排序',sort_order:'顺序'};
+    const labels = {search:'搜索',exclude:'排除关键词',tags:'标签',size:'大小（MB）',untagged:'标签状态',directory:'目录',previewed:'播放状态',sort_by:'排序',sort_order:'顺序',source:'来源'};
     $('filter-chips').innerHTML = Object.entries(labels).filter(([key]) => state.filters[key] !== defaults[key]).map(([key,label]) => {
-      const value = key === 'sort_by' ? sortOptions.find(([value]) => value === state.filters[key])?.[1] || state.filters[key] : key === 'sort_order' ? {auto:'默认',asc:'升序',desc:'降序'}[state.filters[key]] : key === 'directory' ? basename(state.filters[key]) : key === 'untagged' ? state.filters[key] === '1' ? '无人工标签' : '含人工标签' : key === 'previewed' ? state.filters[key] === '0' ? '未播放' : '已播放' : state.filters[key];
+      const value = key === 'sort_by' ? sortOptions.find(([value]) => value === state.filters[key])?.[1] || state.filters[key] : key === 'sort_order' ? {auto:'默认',asc:'升序',desc:'降序'}[state.filters[key]] : key === 'directory' ? basename(state.filters[key]) : key === 'untagged' ? state.filters[key] === '1' ? '无人工标签' : '含人工标签' : key === 'previewed' ? state.filters[key] === '0' ? '未播放' : '已播放' : key === 'source' ? ({all:'全部来源',cloud:'115 云端',local:'本地'}[state.filters[key]] || state.filters[key]) : state.filters[key];
       return `<button class="filter-chip" data-clear-filter="${key}" title="移除此筛选">${label}：${escape(value)}${icon('close')}</button>`;
     }).join('');
     $('filter-dot').hidden = !Object.keys(labels).some(key => state.filters[key] !== defaults[key]);
@@ -508,7 +549,20 @@ document.addEventListener('DOMContentLoaded', () => {
     renderPaths();
   }
   async function fetchStats() {
-    const stats = await api('/library/stats'); state.stats = stats;
+    // 服务端 /library/stats 返回 pending/starred，本地 state.stats 用
+    // unrated/favorites（setScore 与 updateStatusBar 都按这个键名读写）。
+    // 直接把原始响应赋给 state.stats 会导致 unrated/favorites 为 undefined，
+    // 状态栏的待筛/喜欢显示 0、进度也不更新——这就是进度没显示的原因。
+    // 来源筛选时按来源统计（全部 / 115 云端 / 本地）。
+    const qs = state.filters.source !== 'all' ? '?source=' + state.filters.source : '';
+    const data = await api('/library/stats' + qs);
+    state.stats = {
+      total: data.total ?? 0,
+      favorites: data.starred ?? 0,
+      unrated: data.pending ?? 0,
+      excluded: data.excluded ?? 0,
+    };
+    updateStatusBar();
   }
   async function fetchPaths() { state.paths = (await api('/video-paths')).paths; renderPaths(); }
   function renderPaths() {
@@ -570,7 +624,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       const video = state.items[state.index - (page - 1) * state.pageSize] || null;
       const same = keepCurrent && video?.id === state.current?.id;
-      state.current = video; state.currentConsumed = state.consumed.has(video?.id); if (!same) rememberSelection(video); renderGrid(); renderInspector(); renderCurrentCard();
+      state.current = video; state.currentConsumed = state.consumed.has(video?.id); if (!same) rememberSelection(video); renderGrid(); renderInspector(); renderCurrentCard(); updateStatusBar();
       if (!same) setPlayer(video,autoplay); else scheduleWarmup();
       writeUrl();
       return true;
@@ -603,7 +657,7 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
         state.upcoming.offset = null;
-        state.index = index; state.current = video; state.currentConsumed = state.consumed.has(video?.id); rememberSelection(video); renderInspector(); renderGrid(); renderCurrentCard();
+        state.index = index; state.current = video; state.currentConsumed = state.consumed.has(video?.id); rememberSelection(video); renderInspector(); renderGrid(); renderCurrentCard(); updateStatusBar();
         setPlayer(video,autoplay); writeUrl(); updatePagination();
       }
     } finally {
@@ -737,7 +791,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const videos = preview.items, grid = $('video-grid');
     if (!videos.length) {
-      if (!state.total && !state.loading) showEmpty(state.stats.total ? '没有符合条件的视频' : '添加视频目录',state.stats.total ? '调整搜索、路径或播放状态继续筛选。' : '添加本地视频目录，开始预览与筛选。',state.stats.total ? 'filter' : 'library');
+      if (!state.total && !state.loading) {
+        if (state.filters.source === 'local') showEmpty('还没有本地视频','在任务中心「本地来源」卡片粘贴订阅链接并同步后开始筛选。','filter');
+        else showEmpty(state.stats.total ? '没有符合条件的视频' : '添加视频目录',state.stats.total ? '调整搜索、路径或播放状态继续筛选。' : '添加本地视频目录，开始预览与筛选。',state.stats.total ? 'filter' : 'library');
+      }
       return;
     }
     $('empty-state').hidden = true;
@@ -818,7 +875,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const disliked = v?.status === 'disliked';
     $('dislike-button').classList.toggle('selected',disliked);
     $('dislike-button').setAttribute('aria-pressed',String(disliked));
-    $('dislike-button').disabled = !v || state.busyScores.has(v.id);
+    $('dislike-button').disabled = !v || state.busyScores.has(v.id) || !v.sha1;
+    $('dislike-button').title = !v?.sha1 ? '该视频没有 SHA1（本地视频请用新版客户端重新同步），无法记入不喜欢数据集' : '不喜欢 · 记入数据集 · D';
     ['toggle-play','stage-play','mute-button','fullscreen-button','capture-frame'].forEach(id => $(id).disabled = !v);
     if ($('rating-stars')) $('rating-stars').innerHTML = Array.from({length:5},(_,i) => `<button data-rating="${i + 1}" ${v ? '' : 'disabled'} class="${v?.score >= i + 1 ? 'active' : ''}" title="评为 ${i + 1} 分" aria-label="评为 ${i + 1} 分" aria-pressed="${!!v && v.score >= i + 1}">${icon('star')}</button>`).join('') + `<button class="clear-rating" data-rating="0" ${v?.score ? '' : 'disabled'}>清除</button>`;
   }
@@ -826,6 +884,40 @@ document.addEventListener('DOMContentLoaded', () => {
   // 未来 30 张封面持续预取；优先可见区域，限制两个生成任务，成功结果复用。
   const thumbnailCache = new Map(), thumbnailPending = new Map(), thumbnailFailures = new Map(), thumbnailQueue = [], thumbnailJobs = new Map(), thumbnailWanted = new Set();
   let thumbnailActive = 0, thumbnailPreloadTimer;
+  // 封面请求限流（前端防护，不改服务端中间帧逻辑）。
+  // 实测：短时间约 200 个封面请求会触发 115 的 911 账号异常；社区/开源项目
+  // （openlist-115-strm-accelerator、V2EX、115 论坛）共识是并发 1-2、间隔
+  // 300-600ms、能缓存就缓存。这里在 150 次/10 分钟时自动暂停 5 分钟，
+  // 避免撞上 911；暂停期间不发起新的封面请求，可手动点“继续加载”提前恢复。
+  const THUMB_RATE_LIMIT = 150, THUMB_RATE_WINDOW_MS = 10 * 60 * 1000, THUMB_COOLDOWN_MS = 5 * 60 * 1000;
+  const thumbRequestTimes = [];
+  let thumbPausedUntil = 0, thumbCooldownTimer = 0;
+  function thumbRateLimited() {
+    const now = Date.now();
+    while (thumbRequestTimes.length && thumbRequestTimes[0] <= now - THUMB_RATE_WINDOW_MS) thumbRequestTimes.shift();
+    return thumbRequestTimes.length >= THUMB_RATE_LIMIT;
+  }
+  function thumbPauseRemainingMs() { return Math.max(0, thumbPausedUntil - Date.now()); }
+  function thumbIsPaused() { return thumbPausedUntil > Date.now(); }
+  function thumbRecordRequest() { thumbRequestTimes.push(Date.now()); }
+  function thumbShowPauseBanner() {
+    const bar = $('thumb-rate-banner'); if (!bar) return;
+    const mins = Math.ceil(thumbPauseRemainingMs() / 60000);
+    bar.hidden = false;
+    bar.querySelector('.thumb-rate-text').textContent = `封面请求过多，已自动暂停 ${mins} 分钟，稍后自动恢复（短时间约 200 个封面会触发 115 账号异常）。`;
+  }
+  function thumbHidePauseBanner() { const bar = $('thumb-rate-banner'); if (bar) bar.hidden = true; }
+  function thumbStartCooldown() {
+    thumbPausedUntil = Date.now() + THUMB_COOLDOWN_MS;
+    thumbShowPauseBanner();
+    clearTimeout(thumbCooldownTimer);
+    thumbCooldownTimer = setTimeout(() => { thumbPausedUntil = 0; thumbHidePauseBanner(); drainThumbnails(); }, THUMB_COOLDOWN_MS + 1000);
+  }
+  function thumbResumeNow() {
+    thumbPausedUntil = 0; thumbRequestTimes.length = 0; thumbHidePauseBanner();
+    clearTimeout(thumbCooldownTimer); drainThumbnails();
+  }
+  $('thumb-rate-resume').addEventListener('click',() => thumbResumeNow());
   const thumbnailObserver = new IntersectionObserver(entries => {
     entries.forEach(entry => { if (entry.isIntersecting) { thumbnailObserver.unobserve(entry.target); safe(loadThumbnail)(entry.target,true); } });
   },{root:document.querySelector('.library-content'),rootMargin:'300px'});
@@ -889,12 +981,25 @@ document.addEventListener('DOMContentLoaded', () => {
   async function browserThumbnail(id,img) { await loadThumbnail(img,true,true); return thumbnailCache.get(id); }
   function drainThumbnails() {
     if (prefetchSuspended()) return;
+    // 本地视频封面不走 115：队列里只有本地任务时，跳过 115 封面限流的暂停/计数检查，
+    // 大量本地封面不会触发 115 的 911 暂停；云端任务仍受限。
+    const hasCloudTask = thumbnailQueue.some(task => {
+      const v = findVideoById(task.id);
+      return !v || v.source !== 'local';
+    });
+    if (hasCloudTask) {
+      if (thumbIsPaused()) { thumbShowPauseBanner(); return; }
+      if (thumbRateLimited()) { thumbStartCooldown(); return; }
+    }
     // 主视频解码优先，FFmpeg 封面无需占用浏览器解码槽。
     if (!state.config.thumbnails && state.current && player.readyState < 2 && player.dataset.failed !== 'true') return;
     while (thumbnailActive < 2 && thumbnailQueue.length) {
       const task = thumbnailQueue.shift();
       if (!task.priority && !thumbnailWanted.has(task.id) && !document.querySelector(`[data-thumbnail="${task.id}"]`)) { task.resolve(null); continue; }
       thumbnailActive++;
+      // 只有云端封面计入 115 限流（未知来源按云端计，宁可多算）。
+      const taskVideo = findVideoById(task.id);
+      if (!taskVideo || taskVideo.source !== 'local') thumbRecordRequest();
       const controller = new AbortController(); thumbnailJobs.set(task.id,controller);
       generateThumbnail(task.id,controller.signal).then(url => {
         if (url) rememberThumbnail(task.id,url);
@@ -904,6 +1009,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
   async function generateThumbnail(id,signal) {
+    // 本地视频走服务端中间帧（local-play 代理 URL + ffmpeg），与云端同一接口；
+    // /videos/<id>/thumbnail 对本地会 404，无害回落；都失败则保留占位图。
     if (state.config.thumbnails) {
       const controller = new AbortController(), abort = () => controller.abort();
       signal.addEventListener('abort',abort,{once:true}); if (signal.aborted) controller.abort();
@@ -989,10 +1096,31 @@ document.addEventListener('DOMContentLoaded', () => {
     $('timeline').value = Math.round(ratio * 1000); $('timeline').style.setProperty('--progress',`${ratio * 100}%`);
     $('play-time').innerHTML = `${timeText(player.currentTime)} <span>/ ${timeText(player.duration)}</span>`;
   }
+  let coreFlowTimer = 0;
   function updatePlaybackUI() {
     $('player-stage').classList.toggle('playing',!player.paused);
     $('toggle-play').innerHTML = icon(player.paused ? 'play' : 'pause');
     $('toggle-play').setAttribute('aria-label',player.paused ? '播放' : '暂停');
+    // 核心流程条随播放隐藏、暂停显示：状态变化后都延迟 3 秒才改变，
+    // 播放中不闪现。3 秒内状态又变了就重新计时，避免来回闪。
+    // 无过渡动效，避免动画引起的布局抖动。播放进度控制栏始终显示。
+    clearTimeout(coreFlowTimer);
+    const shouldHide = !player.paused;
+    coreFlowTimer = setTimeout(() => {
+      if ((!player.paused) === shouldHide) {
+        document.body.classList.toggle('video-playing', shouldHide);
+      }
+    }, 3000);
+    updateStatusBar();
+  }
+  // 播放区底部状态栏：当前进度（第几条 / 总计）与计数（待筛 / 喜欢 / 点踩）。
+  // 喜欢数即点赞数量，随打分与统计刷新即时更新。
+  function updateStatusBar() {
+    const bar = $('player-status-bar'); if (!bar) return;
+    const total = state.total || 0, position = state.current ? state.index + 1 : 0;
+    const unrated = state.stats.unrated ?? 0, favorites = state.stats.favorites ?? 0, excluded = state.stats.excluded ?? 0;
+    $('status-progress').textContent = total ? `第 ${number(position)} / ${number(total)} 条` : '还没有视频';
+    $('status-counts').innerHTML = `待筛 <b>${number(unrated)}</b> · 喜欢 <b>${number(favorites)}</b> · 点踩 <b>${number(excluded)}</b>`;
   }
   function seekOnSelect(element) {
     if (element.dataset.seekApplied === 'true' || element.readyState < 1) return;
@@ -1063,10 +1191,20 @@ document.addEventListener('DOMContentLoaded', () => {
       destroyHls(player);
       const loadCloudOrLocal = async () => {
         try {
-          if (video.pickcode) {
+          if (video.source === 'local') {
+            // 本地来源：服务端代理直链（普通 <video>，无 m3u8/HLS）。
+            // 浏览器不能从 HTTPS 页面直接拉局域网 http:// 客户端（混合内容拦截），
+            // 所以由 Mac 服务端按 Range 中转；token 只留在服务端。
+            player.src = `${BASE}/videos/${video.id}/local-play`;
+            player.load();
+          } else if (video.pickcode) {
             const res = await api(`/api/play/${encodeURIComponent(video.pickcode)}`);
             if (player.dataset.previewEvent !== selectedEvent) return;
             const streamUrl = res.url;
+            if (res.type === 'direct') {
+              // m3u8 失败兜底取了直链：明确提醒用户（直链继续取，但让用户知道这次走的是直链）。
+              showStatus('m3u8 转码流获取失败，已改用原画直链播放（直链来自 115 接口，非 m3u8 转码流）', true);
+            }
             if (res.type === 'hls' && window.Hls && Hls.isSupported()) {
               const hls = new Hls({ enableWorker: true });
               player._hls = hls;
@@ -1265,6 +1403,9 @@ document.addEventListener('DOMContentLoaded', () => {
   on('playback-rate','change',() => { settings.rate = Number($('playback-rate').value); player.playbackRate = settings.rate; store.set('settings',settings); });
   on('fullscreen-button','click',async () => { if (document.fullscreenElement) await document.exitFullscreen(); else if ($('feed-canvas').requestFullscreen) await $('feed-canvas').requestFullscreen(); else if (player.webkitEnterFullscreen) player.webkitEnterFullscreen(); });
 
+  function findVideoById(id) {
+    return state.previewWindow.items.find(video => video.id === id) || state.upcoming.items.find(video => video.id === id) || state.items.find(video => video.id === id) || state.history.find(entry => entry.video.id === id)?.video || null;
+  }
   function matchesScore(video) { const score = state.filters.score; return score === 'all' || score === '0' && video.score !== 1 || score === 'unrated' && !video.score || String(video.score) === score; }
   async function setScore(video,score,{undoable = true} = {}) {
     if (!video || state.busyScores.has(video.id) || video.score === score) return;
@@ -1277,6 +1418,19 @@ document.addEventListener('DOMContentLoaded', () => {
       const oldKey = statKey(previous), newKey = statKey(score);
       if (oldKey) state.stats[oldKey] = Math.max(0,(state.stats[oldKey] || 0) - 1);
       if (newKey) state.stats[newKey] = (state.stats[newKey] || 0) + 1;
+      // 打分后计数立即刷新：只改 state.stats 不改 DOM 的话，核心条的
+      // 待筛选/精选与页签角标要等下次 loadStats 才变，看起来像点了没反应。
+      // 直接按本地 state.stats 重画这几个数（本脚本内 state 可见），
+      // 并刷新底部状态栏的喜欢数。
+      {
+        const unrated = state.stats.unrated ?? 0, favorites = state.stats.favorites ?? 0, excluded = state.stats.excluded ?? 0;
+        const corePending = $('core-pending'); if (corePending) corePending.textContent = number(unrated);
+        const coreStarred = $('core-starred'); if (coreStarred) coreStarred.textContent = number(favorites);
+        const tabUnrated = $('tab-unrated-count'); if (tabUnrated) tabUnrated.textContent = number(unrated);
+        const tabFavorites = $('tab-favorites-count'); if (tabFavorites) tabFavorites.textContent = number(favorites);
+        const tabExcluded = $('tab-excluded-count'); if (tabExcluded) tabExcluded.textContent = number(excluded);
+        updateStatusBar();
+      }
       if (state.navigationIndex !== null) return;
       if (alreadyConsumed && state.filters.previewed === '0') {
         if (settings.advanceAfterRating && undoable && state.current?.id === video.id && canStepForward()) await stepVideo(1);
@@ -1296,6 +1450,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   async function markDisliked(video) {
     if (!video || state.busyScores.has(video.id)) return;
+    if (!video.sha1) { showStatus('该视频没有 SHA1，无法记入不喜欢数据集', true); return; }
     state.busyScores.add(video.id);
     try {
       const res = await post('/api/dislike', {id: video.id});
@@ -1322,6 +1477,7 @@ document.addEventListener('DOMContentLoaded', () => {
       <label class="form-field">排序方式<select name="sort_by" id="filter-sort-by">${options(sortOptions,f.sort_by)}</select></label>
       <label class="form-field">排序顺序<select name="sort_order" id="filter-sort-order">${options([['auto','默认顺序'],['asc','升序 · A → Z / 小 → 大'],['desc','降序 · Z → A / 大 → 小']],f.sort_order)}</select></label>
       <label class="form-field">评分范围<select name="score">${options([['0','全部 · 隐藏已点踩'],['all','包含所有评分'],['unrated','待筛 · 未评分'],['5','喜欢 · 5 分'],['4','4 分'],['3','3 分'],['2','2 分'],['1','点踩 · 1 分']],f.score)}</select></label>
+      <label class="form-field">视频来源<select name="source">${options([['all','全部来源'],['cloud','115 云端'],['local','本地']],f.source)}</select></label>
       <label class="form-field">播放状态<select name="previewed">${options([['','全部'],['0','只看未看'],['1','只看已播放']],f.previewed)}</select></label>
       <label class="form-field full">视频目录<select name="directory"><option value="">全部目录</option>${options(state.paths.map(path => [path,path]),f.directory)}</select></label>
       <details class="advanced-search-options full"><summary>更多条件 · 排除词、标签、文件大小</summary><div class="form-grid">
@@ -1390,6 +1546,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function openTasks() {
     if (dialog.open) dialog.close();
     player.pause();
+    document.querySelectorAll('.star-collapsible').forEach(d => { d.open = false; });
     document.dispatchEvent(new CustomEvent('video-tasks:open'));
   }
   async function loadTagSettings() {
@@ -1487,7 +1644,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const video = state.current;
     if (!video) return;
     const tags = (video.tags || '').split(',').filter(Boolean);
-    openDialog('视频信息',`<h3 class="video-info-title">${escape(video.filename)}</h3><p class="video-info-meta">${escape(sizeText(video.file_size))} · 已播放 ${number(video.preview_count)} 次 · ${escape(scoreText(video.score))}</p><div class="tags">${tags.map(tag => `<button class="tag" data-tag="${escape(tag)}">#${escape(tag.replace(/^a_/,''))}</button>`).join('')}</div><div class="video-info-rating"><span>评分</span><div id="rating-stars" class="stars" aria-label="视频评分"></div></div><p class="video-info-path">${escape(video.detail)}</p><div class="video-info-buttons"><button class="button" data-action="rename">编辑名称与标签</button><button class="button" data-action="copy-path">复制路径</button><button class="button" data-action="capture">查看当前截图</button></div>`,'info');
+    openDialog('视频信息',`<h3 class="video-info-title">${escape(video.filename)}</h3><p class="video-info-meta">${escape(sizeText(video.file_size))} · 已播放 ${number(video.preview_count)} 次 · ${escape(scoreText(video.score))}</p>${video.sha1 ? `<p class="video-info-path">SHA1（${video.source === 'local' ? '头部 1MB' : '115 全文件'}）：<code>${escape(video.sha1)}</code></p>` : ''}<div class="tags">${tags.map(tag => `<button class="tag" data-tag="${escape(tag)}">#${escape(tag.replace(/^a_/,''))}</button>`).join('')}</div><div class="video-info-rating"><span>评分</span><div id="rating-stars" class="stars" aria-label="视频评分"></div></div><p class="video-info-path">${escape(video.detail)}</p><div class="video-info-buttons"><button class="button" data-action="rename">编辑名称与标签</button><button class="button" data-action="copy-path">复制路径</button><button class="button" data-action="capture">查看当前截图</button></div>`,'info');
     renderInspector();
   }
 
@@ -1513,6 +1670,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('click',safe(async event => {
     const action = event.target.closest('[data-action]'); if (action) { $('config-menu').open = false; return await actions[action.dataset.action]?.(); }
     const library = event.target.closest('[data-library]'); if (library) return await applyFilters({score:library.dataset.library});
+    const source = event.target.closest('[data-source]'); if (source) return await applyFilters({source:source.dataset.source});
     const path = event.target.closest('[data-path-index]'); if (path) { const value = state.paths[Number(path.dataset.pathIndex)]; return await applyFilters({directory:state.filters.directory === value ? '' : value}); }
     const clear = event.target.closest('[data-clear-filter]'); if (clear) return await applyFilters({[clear.dataset.clearFilter]:defaults[clear.dataset.clearFilter]});
     const frame = event.target.closest('[data-open-frame]');
@@ -1614,8 +1772,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const btn = $('cloud-sync-button');
     btn.disabled = true; btn.textContent = '同步中...';
     try {
-      const res = await post('/api/cloud/sync', {});
-      showStatus(`同步完成：新增待筛 ${res.added_pending}，SHA1 去重拦截 ${res.dedup_rejected}`);
+      const res = await post('/api/cloud/sync', {async: true});
+      const progress = await pollTask(res.task_id, p => { btn.textContent = `同步中...已扫描 ${number(p.scanned)} 个`; });
+      showStatus(`同步完成：新增待筛 ${progress.added}，SHA1 去重拦截 ${progress.dedup_rejected}`);
       await Promise.all([fetchStats(), loadPage(1, 0, { autoplay: false })]);
     } catch (e) {
       showStatus(e.message || '云端同步失败，请先配置 115 Cookie 与目录', true);
@@ -1624,6 +1783,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
   $('cloud-commit-button')?.addEventListener('click', () => {
+    openTasks();
+  });
+  $('local-settle-button')?.addEventListener('click', () => {
     openTasks();
   });
   safe(initialize)();
@@ -1639,11 +1801,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const escape = value => String(value ?? '').replace(/[&<>"']/g,c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const number = value => Number(value || 0).toLocaleString('zh-CN');
   const labels = {queued:'排队中',running:'进行中',cancelling:'正在取消',completed:'已完成',cancelled:'已取消',failed:'失败',interrupted:'服务中断'};
-  const statLabels = {io_timeouts:'文件 I/O 超时',fingerprint_read_bytes:'指纹读取量（MB）',reference_files:'参考文件',size_skipped:'按大小直接跳过',hash_cache_hits:'缓存复用',head_hashed:'新算文件头哈希',full_hashed:'新算完整哈希',candidates:'待处理记录',eligible:'可处理视频',bytes:'文件总字节',copied:'已复制',moved:'已移动',matched:'命中视频',marked:'已标记 1 分',blacklist_hits:'黑名单命中',duplicate_hits:'库内重复',cluster_skipped:'时间聚类跳过',identical_skipped:'相同内容跳过',outside_source:'不在源目录',skipped:'已跳过',errors:'处理异常',compatible:'编码兼容',incompatible:'编码不兼容'};
+  const statLabels = {io_timeouts:'文件 I/O 超时',fingerprint_read_bytes:'指纹读取量（MB）',reference_files:'参考文件',size_skipped:'按大小直接跳过',hash_cache_hits:'缓存复用',head_hashed:'新算文件头哈希',full_hashed:'新算完整哈希',candidates:'待处理记录',eligible:'可处理视频',bytes:'文件总字节',copied:'已复制',moved:'已移动',matched:'命中视频',marked:'已标记 1 分',blacklist_hits:'黑名单命中',duplicate_hits:'库内重复',cluster_skipped:'时间聚类跳过',identical_skipped:'相同内容跳过',outside_source:'不在源目录',skipped:'已跳过',errors:'处理异常',compatible:'编码兼容',incompatible:'编码不兼容',small_moved:'已移动小视频',large_moved:'已移动大视频',move_candidates:'待移动数量',mark_candidates:'待标记数量',marked_indexed:'已标记已索引',prefetched:'已预取封面',settle_candidates:'待结算数量',local_moved:'已移动精选',local_recycled:'已移入回收站',local_failed:'结算失败'};
   const terminal = new Set(['completed','failed','cancelled','interrupted']);
   const integerFields = ['cluster_threshold','window_seconds','size_tolerance','hash_chunk_mb','max_workers','io_timeout_seconds'];
   const form = $('star-config-form');
-  let config = null, tasks = [], selectedId = null, dirty = false, polling = false, pollTimer, lastStats = 0, historySignature = '';
+  let config = null, tasks = [], selectedId = null, dirty = false, polling = false, pollTimer, lastStats = 0, historySignature = '', pendingMoveLargeNav = null;
   const taskDialog = $('tasks-dialog');
   let initialized = false, initializing = false;
 
@@ -1680,7 +1842,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     $('config-fields').disabled = false; setLaunchEnabled(true); updateDirty(false);
   }
-  async function saveConfiguration() {
+  async function saveConfiguration(silent) {
     if (!form.reportValidity()) return false;
     const values = Object.fromEntries(new FormData(form));
     integerFields.forEach(key => values[key] = Number(values[key]));
@@ -1690,11 +1852,23 @@ document.addEventListener('DOMContentLoaded', () => {
     values.prefer_m3u8 = form.elements.namedItem('prefer_m3u8').checked;
     $('save-config').disabled = true;
     try {
-      const result = await api('/star/config',{body:values}); config = result.config; updateDirty(false); notify('配置已保存'); return true;
+      const result = await api('/star/config',{body:values}); config = result.config; updateDirty(false); if (!silent) notify('配置已保存'); return true;
     } finally { $('save-config').disabled = false; }
   }
-  form.addEventListener('input',() => updateDirty(true));
-  form.addEventListener('change',() => updateDirty(true));
+  // 配置自动保存：改动后 1.5 秒无输入即自动保存（静默，不弹“配置已保存”），
+  // 粘贴新 Cookie / 改目录后不用再点“保存配置”，也不会因忘点保存而用旧 Cookie。
+  let autoSaveTimer = null;
+  function scheduleAutoSave() {
+    if (autoSaveTimer) clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(() => {
+      autoSaveTimer = null;
+      if (!dirty) return;
+      if (!form.checkValidity()) return; // 无效时不自动保存，等用户修正后手动保存
+      void safe(() => saveConfiguration(true))();
+    }, 1500);
+  }
+  form.addEventListener('input',() => { updateDirty(true); scheduleAutoSave(); });
+  form.addEventListener('change',() => { updateDirty(true); scheduleAutoSave(); });
   form.addEventListener('submit',event => { event.preventDefault(); void safe(saveConfiguration)(); });
   $('reload-config').addEventListener('click',safe(async () => {
     await loadConfiguration();
@@ -1710,11 +1884,50 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) { notify(e.message || '导入失败', true); }
   });
 
-  async function loadStats() {
-    const data = await api('/library/stats?include_previews=1');
+  // 快捷输入 Cookie JSON（2026-11-16）：粘贴浏览器插件导出的 JSON 数组，
+  // 后端解析成 Cookie 头并保存。4 步：登录 115 → 导出 JSON → 粘贴导入 → 同步验证。
+  function openCookieQuickImport() {
+    openDialog('快捷输入 115 Cookie', `<p class="dialog-description">按下面 4 步操作，把浏览器里导出的 115 Cookie 一次性导进来，不用再手动拼 UID=...; CID=... 字符串。</p>
+<ol style="margin:0 0 16px 18px;font-size:12px;line-height:2;color:#b9bcc9">
+<li><b>1.</b> 在浏览器打开 115.com，确认已登录。</li>
+<li><b>2.</b> 用 Cookie 导出插件（EditThisCookie / Cookie-Editor）导出 115 的 Cookie，复制得到的 JSON 数组。</li>
+<li><b>3.</b> 把 JSON 粘贴到下面输入框，点「导入 Cookie」。</li>
+<li><b>4.</b> 导入成功后，回到页面点「同步云端」验证；同步正常即完成。</li>
+</ol>
+<label class="form-field full">Cookie JSON（浏览器插件导出的数组）<textarea id="cookie-json-input" rows="8" placeholder='[{"domain":".115.com","name":"UID","value":"..."}, ...]' spellcheck="false" style="font-family:ui-monospace,monospace"></textarea></label>
+<p id="cookie-import-status" class="form-status" role="status" hidden></p>
+<div class="dialog-actions"><button class="button" type="button" id="cookie-json-clear">清空</button><button class="button primary" type="button" id="cookie-json-import">导入 Cookie</button></div>`);
+    const statusEl = $('cookie-import-status');
+    const setImportStatus = (msg, isErr) => { statusEl.textContent = msg; statusEl.classList.toggle('error', !!isErr); statusEl.hidden = false; };
+    $('cookie-json-clear').addEventListener('click', () => { $('cookie-json-input').value = ''; $('cookie-json-input').focus(); });
+    $('cookie-json-import').addEventListener('click', async () => {
+      const raw = $('cookie-json-input').value.trim();
+      if (!raw) { setImportStatus('请先粘贴浏览器导出的 Cookie JSON', true); return; }
+      setImportStatus('正在导入…');
+      try {
+        const res = await api('/api/cloud/cookie/import', { body: { cookies_json: raw } });
+        setImportStatus(`导入成功：${res.count} 个 Cookie（${(res.names || []).map(escape).join('、')}），已保存到 115-cookies.txt。请按第 4 步点「同步云端」验证。`);
+        // 导入后粘贴框里的 Cookie 不再需要，清空避免留在页面上
+        $('cookie-json-input').value = '';
+        await loadConfiguration();
+      } catch (e) { setImportStatus(e.message || '导入失败', true); }
+    });
+  }
+  $('cookie-quick-import-btn')?.addEventListener('click', () => openCookieQuickImport());
+
+  async function loadStats(cidOverride) {
+    // 计数按当前目录（inbox_cid）过滤：新目录不显示旧目录的喜欢数。
+    // cid 优先用传入值，其次用已加载的 config.inbox_cid；都没有则不传（全局）。
+    const cid = cidOverride || (config && config.inbox_cid) || '';
+    const qs = cid ? ('?include_previews=1&inbox_cid=' + encodeURIComponent(cid)) : '?include_previews=1';
+    const data = await api('/library/stats' + qs);
     $('metric-previews').textContent = number(data.pending ?? 0);
     const corePending = $('core-pending'); if (corePending) corePending.textContent = number(data.pending ?? 0);
     const coreStarred = $('core-starred'); if (coreStarred) coreStarred.textContent = number(data.starred ?? 0);
+    // 视频范围页签上的数量：待筛 / 喜欢（收藏） / 点踩，随统计一起回填
+    const tabUnrated = $('tab-unrated-count'); if (tabUnrated) tabUnrated.textContent = number(data.pending ?? 0);
+    const tabFavorites = $('tab-favorites-count'); if (tabFavorites) tabFavorites.textContent = number(data.starred ?? 0);
+    const tabExcluded = $('tab-excluded-count'); if (tabExcluded) tabExcluded.textContent = number(data.excluded ?? 0);
     $('metric-viewed').textContent = `${number(data.starred ?? 0)} / ${number(data.downloaded ?? 0)}`;
     $('metric-unseen').textContent = `总计 ${number(data.total ?? 0)} · 已淘汰 ${number(data.excluded ?? 0)} · 历史库 ${number(data.history_sha1 ?? 0)}`;
     lastStats = Date.now();
@@ -1760,7 +1973,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const signature = JSON.stringify(tasks.map(t => [t.id,t.status,t.processed,t.total,t.updated_at,t.stats]));
     if (signature === historySignature) return;
     historySignature = signature;
-    $('task-history').innerHTML = tasks.length ? `<div class="star-history-scroll"><table class="star-history-table"><thead><tr><th>任务</th><th>状态</th><th>处理进度</th><th>创建时间</th><th>操作</th></tr></thead><tbody>${tasks.map(task => `<tr class="${task.id === selectedId ? 'selected' : ''}"><td><button class="text-button" data-select-task="${task.id}">${escape(task.title)}</button><small>${task.dry_run ? '数量预览' : '执行任务'} · ${task.id.slice(0,8)}</small></td><td><span class="star-status ${task.status}">${labels[task.status] || escape(task.status)}</span></td><td>${number(task.processed)} / ${number(task.total)}</td><td>${escape(task.created_at.replace('T',' '))}</td><td><button class="text-button" data-select-task="${task.id}">查看详情</button></td></tr>`).join('')}</tbody></table></div>` : '<div class="star-placeholder">还没有任务，先预览一个任务的处理数量。</div>';
+    $('task-history').innerHTML = tasks.length ? `<div class="star-history-scroll"><table class="star-history-table"><thead><tr><th>任务</th><th>状态</th><th>处理进度</th><th>创建时间</th><th>操作</th></tr></thead><tbody>${tasks.map(task => `<tr class="${task.id === selectedId ? 'selected' : ''}"><td><button class="text-button" data-select-task="${task.id}">${escape(task.title)}</button><small>${task.dry_run ? '数量预览' : '执行任务'} · ${task.id.slice(0,8)}</small></td><td><span class="star-status ${task.status}">${labels[task.status] || escape(task.status)}</span></td><td>${task.total ? number(task.processed) + ' / ' + number(task.total) : number(task.processed) + ' 个'}</td><td>${escape(task.created_at.replace('T',' '))}</td><td><button class="text-button" data-select-task="${task.id}">查看详情</button></td></tr>`).join('')}</tbody></table></div>` : '<div class="star-placeholder">还没有任务，先预览一个任务的处理数量。</div>';
   }
   function renderDetail(task) {
     const previousLog = $('task-log'), previousScroll = previousLog?.scrollTop || 0;
@@ -1772,7 +1985,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const hashProgress = !done && task.hash_total_bytes > 0 ? `<p class="subtle">${task.io_operation === 'heads' ? '正在读取文件头' : '正在校验完整内容'}：${(Number(task.hash_read_bytes || 0) / 1048576).toFixed(1)} / ${(Number(task.hash_total_bytes) / 1048576).toFixed(1)} MB</p>` : '';
     const ioWait = !done && task.io_wait_seconds >= 3 ? `<p class="subtle">文件读取已等待 ${number(task.io_wait_seconds)} 秒；连续 ${number(task.io_timeout_seconds || 30)} 秒无响应将停止本次读取。</p>` : '';
     const cacheInfo = task.cache_error ? `<p class="star-error">${escape(task.cache_error)}</p>` : task.cache_file ? `<p class="star-current-path" title="${escape(task.cache_file)}">指纹缓存：${escape(task.cache_file)}</p>` : '';
-    $('task-detail').innerHTML = `<div class="star-detail-title"><div><h3>${escape(task.title)}<span class="star-dry-label">${task.dry_run ? '数量预览' : '执行任务'}</span></h3><p>${escape(task.id.slice(0,8))} · ${escape((task.started_at || task.created_at).replace('T',' '))}</p></div><span class="star-status ${task.status}">${labels[task.status] || escape(task.status)}</span></div><div class="star-progress"><div style="width:${percent}%"></div></div><div class="star-progress-caption"><span>${phasePrefix}${task.total ? `${number(task.processed)} / ${number(task.total)}` : done ? '已结束' : '正在准备或扫描…'}</span><span>${percent}%</span></div>${task.current ? `<p class="star-current-path" title="${escape(task.current)}">${escape(task.current)}</p>` : ''}${task.error ? `<div class="star-error">${escape(task.error)}</div>` : ''}${task.storage_error ? `<div class="star-error">${escape(task.storage_error)}</div>` : ''}${ioWait}${hashProgress}${cacheInfo}<div class="star-result-grid">${stats.map(([key,value]) => `<div><span>${escape(statLabels[key] || key)}</span><strong>${key === 'fingerprint_read_bytes' ? (Number(value) / 1048576).toFixed(1) : number(value)}</strong></div>`).join('')}</div><div class="star-detail-actions">${!done ? `<button class="button" data-cancel-task="${task.id}" ${task.status === 'cancelling' ? 'disabled' : ''}>${task.status === 'cancelling' ? '正在停止…' : '取消任务'}</button>` : `<button class="button" data-retry-task="${task.id}">按当前配置重新运行</button>`}<a class="text-button" href="${BASE}/star/tasks/${task.id}/log" download>下载日志 ↓</a></div><details class="star-task-config"><summary>查看执行时的配置</summary><pre>${escape(JSON.stringify(task.config,null,2))}</pre></details><pre class="star-task-log" id="task-log" aria-label="任务日志">${escape(task.logs.map(row => row.time.slice(11) + '  ' + row.message).join('\n') || '任务正在排队…')}</pre>`;
+    $('task-detail').innerHTML = `<div class="star-detail-title"><div><h3>${escape(task.title)}<span class="star-dry-label">${task.dry_run ? '数量预览' : '执行任务'}</span></h3><p>${escape(task.id.slice(0,8))} · ${escape((task.started_at || task.created_at).replace('T',' '))}</p></div><span class="star-status ${task.status}">${labels[task.status] || escape(task.status)}</span></div><div class="star-progress"><div style="width:${percent}%"></div></div><div class="star-progress-caption"><span>${phasePrefix}${task.total ? `${number(task.processed)} / ${number(task.total)}` : done ? '已结束' : `已扫描 ${number(task.processed)} 个`}</span>${task.total ? `<span>${percent}%</span>` : ''}</div>${task.current ? `<p class="star-current-path" title="${escape(task.current)}">${escape(task.current)}</p>` : ''}${(task.dirs_done != null || task.dirs_queued != null) ? `<p class="subtle">已扫 ${number(task.dirs_done || 0)} 个目录，待扫 ${number(task.dirs_queued || 0)} 个</p>` : ''}${task.error ? `<div class="star-error">${escape(task.error)}</div>` : ''}${task.storage_error ? `<div class="star-error">${escape(task.storage_error)}</div>` : ''}${ioWait}${hashProgress}${cacheInfo}${task.params ? (task.params.interval_seconds != null ? `<p class="subtle">执行参数：每 ${escape(String(task.params.interval_seconds))} 秒 1 张，最多 ${escape(String(task.params.max_items))} 张</p>` : (task.params.min_size_mb == null && task.params.max_size_mb == null && task.params.folder != null ? `<p class="subtle">执行参数：精选目标文件夹「${escape(task.params.folder || '')}」，淘汰进 _dy_回收站</p>` : `<p class="subtle">执行参数：阈值 ${task.params.min_size_mb != null ? '≥' + escape(String(task.params.min_size_mb)) : '≤' + escape(String(task.params.max_size_mb))}MB，目标文件夹「${escape(task.params.folder || '')}」</p>`)) : ''}<div class="star-result-grid">${stats.map(([key,value]) => `<div><span>${escape(statLabels[key] || key)}</span><strong>${key === 'fingerprint_read_bytes' ? (Number(value) / 1048576).toFixed(1) : number(value)}</strong></div>`).join('')}</div><div class="star-detail-actions">${!done ? `<button class="button" data-cancel-task="${task.id}" ${task.status === 'cancelling' ? 'disabled' : ''}>${task.status === 'cancelling' ? '正在停止…' : '取消任务'}</button>` : `<button class="button" data-retry-task="${task.id}">按当前配置重新运行</button>`}<a class="text-button" href="${BASE}/star/tasks/${task.id}/log" download>下载日志 ↓</a></div><details class="star-task-config"><summary>查看执行时的配置</summary><pre>${escape(JSON.stringify(task.config,null,2))}</pre></details><pre class="star-task-log" id="task-log" aria-label="任务日志">${escape(task.logs.map(row => row.time.slice(11) + '  ' + row.message).join('\n') || '任务正在排队…')}</pre>`;
     $('task-log').scrollTop = atBottom ? $('task-log').scrollHeight : previousScroll;
     document.querySelector('.star-task-config').open = configOpen;
   }
@@ -1789,8 +2002,22 @@ document.addEventListener('DOMContentLoaded', () => {
     polling = true;
     try {
       const result = await api('/star/tasks'); tasks = result.tasks;
-      if (!selectedId && tasks.length) selectedId = tasks[0].id;
+      // 打开任务中心时优先选中正在跑（或排队）的任务，而不是最新建的那条；
+      // 否则刷新后会选中刚被取消的重复任务，显示 0 进度，让人以为同步没动。
+      if (!selectedId && tasks.length) { const active = tasks.find(t => t.status === 'running' || t.status === 'queued'); selectedId = (active || tasks[0]).id; }
       renderHistory(); await loadDetail();
+      // move_large 成功完成后自动切到目标文件夹：只对本页本次发起的执行任务
+      // 切一次；失败/取消/预览绝不切；任务记录消失也清掉，不再等。
+      if (pendingMoveLargeNav) {
+        const doneTask = tasks.find(t => t.id === pendingMoveLargeNav);
+        if (!doneTask) pendingMoveLargeNav = null;
+        else if (doneTask.status === 'completed') {
+          pendingMoveLargeNav = null;
+          if (doneTask.dest_folder) void autoNavToMoveLargeDest(doneTask);
+        } else if (terminal.has(doneTask.status)) {
+          pendingMoveLargeNav = null;
+        }
+      }
       if (Date.now() - lastStats > 10000) await loadStats();
       $('page-error').hidden = true;
     } catch (error) {
@@ -1800,16 +2027,154 @@ document.addEventListener('DOMContentLoaded', () => {
       if (taskDialog.open && !document.hidden) pollTimer = setTimeout(() => { if (taskDialog.open && !document.hidden) void poll(); },tasks.some(task => !terminal.has(task.status)) ? 1500 : 5000);
     }
   }
-  async function launch(action, dryRun) {
+  async function launch(action, dryRun, params) {
     if (!config) throw new Error('请先加载配置');
     if (dirty) { notify('请先保存配置，再开始任务',true); $('save-config').focus(); return; }
     setLaunchEnabled(false);
     try {
-      const result = await api('/star/tasks',{body:{action,dry_run:dryRun}});
+      const body = {action, dry_run: dryRun};
+      if (params) body.params = params;
+      const result = await api('/star/tasks',{body});
       selectedId = result.task.id; detailSignature = ''; historySignature = '';
+      // move_large（执行，非预览）：记下本次任务，完成后自动切到它实际用的
+      // 目标文件夹；失败/取消不切（见 poll 里的检查）。
+      pendingMoveLargeNav = (action === 'move_large_videos' && !dryRun) ? result.task.id : null;
       notify(dryRun ? '数量预览任务已提交' : '任务已加入后台队列');
       await poll();
     } finally { setLaunchEnabled(true); }
+  }
+  // move_large 成功完成：把当前目录切到本次实际用的目标文件夹（任务结果里
+  // 的 dest_folder，rel_path 前缀），让用户直接在该文件夹里在线筛选刚移过去
+  // 的大文件。只在用户还在本页时执行；导航本身不关任务中心弹窗。
+  async function autoNavToMoveLargeDest(task) {
+    const folder = (task.dest_folder || '').trim();
+    if (!folder || document.hidden) return;
+    const nav = window.__dyNavigateToDirectory;
+    if (typeof nav !== 'function') return;
+    await nav(folder);
+    notify('大文件已移入「' + folder + '」，当前目录已切换到该文件夹');
+  }
+  /* ---- 按大小整理：直方图 + 阈值预览（只读本地库，不调 115 接口） ---- */
+  let sizeFolderTouched = false;
+  let sizeThresholdTouched = false;
+  let sizeFolderLargeTouched = false;
+  let sizeThresholdLargeTouched = false;
+  let sizeHistTimer = null;
+  function sizeParams() {
+    const threshold = Math.max(10, Math.min(10240, parseInt($('size-threshold').value, 10) || 1024));
+    return {max_size_mb: threshold, folder: ($('size-folder').value || '').trim()};
+  }
+  function sizeParamsLarge() {
+    const threshold = Math.max(10, Math.min(10240, parseInt($('size-threshold-large').value, 10) || 1024));
+    return {min_size_mb: threshold, folder: ($('size-folder-large').value || '').trim()};
+  }
+  function prefetchParams() {
+    const interval = Math.max(5, Math.min(60, parseFloat($('prefetch-interval').value) || 10));
+    const maxItems = Math.max(1, Math.min(500, parseInt($('prefetch-max').value, 10) || 100));
+    return {interval_seconds: interval, max_items: maxItems};
+  }
+  /* ---- 本地来源：订阅同步（浏览器直连失败时自动改由服务端中转） ---- */
+  async function loadLocalStatus() {
+    const el = $('local-sync-status');
+    if (!el) return;
+    try {
+      const data = await api('/api/local/status');
+      if (!data.configured) { el.textContent = '未连接本地客户端：先在电脑上运行 local_client.py，再把订阅链接粘贴到上面点「同步本地」。'; return; }
+      el.textContent = `已连接 ${data.host || ''}（${(data.roots || []).join('、') || '—'}），库内本地视频 ${number(data.video_count || 0)} 个${data.updated_at ? ' · 上次同步 ' + data.updated_at.replace('T',' ') : ''}。`;
+    } catch (error) { el.textContent = '本地来源状态读取失败：' + (error.message || ''); }
+  }
+  async function syncLocal() {
+    const input = $('local-sub-url');
+    const subUrl = (input?.value || '').trim();
+    if (!subUrl) { notify('请先粘贴本地客户端打印的订阅链接', true); return; }
+    const btn = $('local-sync-btn');
+    const statusEl = $('local-sync-status');
+    btn.disabled = true;
+    try {
+      let body = null;
+      // 先试浏览器直连客户端取订阅；HTTPS 页面访问局域网 http:// 会被
+      // 混合内容拦截，失败时改由 Mac 服务端中转拉取（局域网内直连）。
+      try {
+        const res = await fetch(subUrl, {mode:'cors'});
+        if (!res.ok) throw new Error('订阅请求失败（' + res.status + '）');
+        const payload = await res.json();
+        const u = new URL(subUrl);
+        body = {payload, base_url: u.origin, token: u.searchParams.get('token') || ''};
+        if (statusEl) statusEl.textContent = '浏览器已直连客户端，正在写入本地库…';
+      } catch (e) {
+        if (statusEl) statusEl.textContent = '浏览器直连失败（HTTPS 页面无法直接访问局域网 http 客户端），改由 Mac 服务端中转拉取订阅…';
+        body = {sub_url: subUrl};
+      }
+      const result = await api('/api/local/sync', {body});
+      let msg = `本地同步完成：新增 ${result.added} 个，更新 ${result.updated} 个，移除失效 ${result.removed} 个，共 ${result.total} 个。`;
+      if (result.duplicates) msg += ` 内容重复跳过 ${result.duplicates} 个。`;
+      if (result.disliked) msg += ` 不喜欢数据集跳过 ${result.disliked} 个。`;
+      notify(msg);
+      await loadLocalStatus();
+      await loadStats();
+      if (window.__dyReloadGrid) window.__dyReloadGrid();
+    } catch (error) {
+      notify(error.message || '本地同步失败', true);
+      if (statusEl) statusEl.textContent = '本地同步失败：' + (error.message || '请检查订阅链接与客户端是否在运行');
+    } finally { btn.disabled = false; }
+  }
+  $('local-sync-btn')?.addEventListener('click', () => { void syncLocal(); });
+  function formatGB(bytes) {
+    const gb = bytes / 1073741824;
+    if (gb >= 10) return gb.toFixed(1) + ' GB';
+    if (gb >= 1) return gb.toFixed(2) + ' GB';
+    return Math.round(bytes / 1048576) + ' MB';
+  }
+  async function loadSizeDistribution(thresholdMb) {
+    const bars = $('size-hist-bars');
+    if (!bars) return;
+    try {
+      const largeMb = Math.max(10, Math.min(10240, parseInt($('size-threshold-large').value, 10) || 1024));
+      const result = await api('/library/size-distribution?max_size_mb=' + (thresholdMb || 1024) + '&min_size_mb=' + largeMb);
+      const maxCount = Math.max(1, ...result.buckets.map(b => b.count));
+      bars.innerHTML = result.buckets.map(b => {
+        const under = b.max_mb !== null && b.max_mb <= result.preview.max_mb;
+        const over = b.min_mb >= result.preview_large.min_mb;
+        return `<div class="size-bar-row${under ? ' under' : ''}${over ? ' over' : ''}"><span>${escape(b.label)}</span><div class="size-bar-track"><div class="size-bar-fill" style="width:${Math.max(2, Math.round(b.count / maxCount * 100))}%"></div></div><span>${number(b.count)} 个 · ${formatGB(b.bytes)}</span></div>`;
+      }).join('');
+      $('size-preview').textContent = result.preview.label + ' → ' + number(result.preview.count) + ' 个视频 / ' + formatGB(result.preview.bytes) + ' 将移动（共 ' + number(result.total) + ' 个，' + formatGB(result.total_bytes) + '）';
+      $('size-preview-large').textContent = result.preview_large.label + ' → ' + number(result.preview_large.count) + ' 个视频 / ' + formatGB(result.preview_large.bytes) + ' 将移动（共 ' + number(result.total) + ' 个，' + formatGB(result.total_bytes) + '）';
+      if (!sizeThresholdTouched) $('size-threshold').value = result.preview.max_mb;
+      if (!sizeFolderTouched) $('size-folder').value = result.defaults.folder;
+      if (!sizeThresholdLargeTouched) $('size-threshold-large').value = result.preview_large.min_mb;
+      if (!sizeFolderLargeTouched) $('size-folder-large').value = result.defaults_large.folder;
+      document.querySelectorAll('[data-size-quick]').forEach(btn => btn.classList.toggle('active', Number(btn.dataset.sizeQuick) === result.preview.max_mb));
+      document.querySelectorAll('[data-size-quick-large]').forEach(btn => btn.classList.toggle('active', Number(btn.dataset.sizeQuickLarge) === result.preview_large.min_mb));
+    } catch (error) {
+      bars.innerHTML = `<p class="subtle">大小分布加载失败：${escape(error.message || error)}</p>`;
+    }
+  }
+  function initSizeHistogram() {
+    if (!$('size-threshold')) return;
+    $('size-threshold').addEventListener('input', () => {
+      sizeThresholdTouched = true;
+      clearTimeout(sizeHistTimer);
+      sizeHistTimer = setTimeout(() => { void loadSizeDistribution(parseInt($('size-threshold').value, 10) || 1024); }, 400);
+    });
+    $('size-folder').addEventListener('input', () => { sizeFolderTouched = true; });
+    document.querySelectorAll('[data-size-quick]').forEach(btn => btn.addEventListener('click', () => {
+      sizeThresholdTouched = true;
+      $('size-threshold').value = btn.dataset.sizeQuick;
+      void loadSizeDistribution(Number(btn.dataset.sizeQuick));
+    }));
+    $('size-threshold-large').addEventListener('input', () => {
+      sizeThresholdLargeTouched = true;
+      clearTimeout(sizeHistTimer);
+      sizeHistTimer = setTimeout(() => { void loadSizeDistribution(parseInt($('size-threshold').value, 10) || 1024); }, 400);
+    });
+    $('size-folder-large').addEventListener('input', () => { sizeFolderLargeTouched = true; });
+    document.querySelectorAll('[data-size-quick-large]').forEach(btn => btn.addEventListener('click', () => {
+      sizeThresholdLargeTouched = true;
+      $('size-threshold-large').value = btn.dataset.sizeQuickLarge;
+      void loadSizeDistribution(parseInt($('size-threshold').value, 10) || 1024);
+    }));
+    $('size-refresh').addEventListener('click', () => { void loadSizeDistribution(parseInt($('size-threshold').value, 10) || 1024); });
+    void loadSizeDistribution();
   }
   /* ---- 核心流程条（2026-11-14 UI 优化）：粘贴 115 网址 → 自动提取 CID → 一键索引 / 一键同步 ----
      只复用已有接口与已有函数，不改后端：索引走已有 star 任务 sync_cloud，
@@ -1846,6 +2211,35 @@ document.addEventListener('DOMContentLoaded', () => {
     const bar = $('core-flow-status');
     if (bar) bar.classList.toggle('error', Boolean(isError));
   }
+  /* 核心条实时进度：点「一键索引」后轮询该任务，把进度直接显示在顶部状态行，
+     不用打开任务中心也能看到。任务结束或被新任务取代时自动停止。 */
+  let corePollToken = 0;
+  async function pollCoreProgress() {
+    const id = selectedId;
+    if (!id) return;
+    const token = ++corePollToken;
+    try {
+      for (;;) {
+        if (token !== corePollToken) return;
+        let task;
+        try { const res = await api('/star/tasks/' + id); task = res.task; }
+        catch (e) { break; }
+        if (!task) break;
+        const done = terminal.has(task.status);
+        const percent = task.total ? Math.min(100, Math.floor(task.processed / task.total * 100)) : 0;
+        const phase = task.phase ? task.phase + ' · ' : '';
+        if (done) {
+          if (task.status === 'completed') setCoreStatus('索引同步完成：已处理 ' + number(task.processed) + ' / ' + number(task.total) + '。');
+          else if (task.error) setCoreStatus('索引同步失败：' + task.error, true);
+          else setCoreStatus('索引同步已结束（' + task.status + '）：已处理 ' + number(task.processed) + ' / ' + number(task.total) + '。', true);
+          break;
+        }
+        const progressText = task.total ? number(task.processed) + ' / ' + number(task.total) + '（' + percent + '%）' : '正在准备或扫描…';
+        setCoreStatus('正在同步 115 目录：' + phase + progressText);
+        await new Promise(r => setTimeout(r, 1500));
+      }
+    } catch (e) { /* 轮询失败就停在当前状态，不打断页面 */ }
+  }
   async function ensureConfigSaved() {
     if (!config) {
       setCoreStatus('正在加载 115 配置…');
@@ -1859,6 +2253,20 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!ok) { setCoreStatus('配置未保存（请检查表单），已取消本次操作', true); return false; }
       return true;
     } catch (error) { setCoreStatus('保存配置失败：' + (error.message || '请稍后重试'), true); return false; }
+  }
+  /* 顶栏（.feed-topbar）是 fixed 定位，默认 top:8px 会盖住顶部的核心流程条，
+     导致两个输入框（#core-url 和 #search-input）重叠。量出核心条的实际高度，
+     通过 --core-h 把顶栏顶到核心条下方；窗口变化/核心条换行时重新量。 */
+  function updateCoreH() {
+    const bar = $('core-flow');
+    if (!bar) return;
+    document.documentElement.style.setProperty('--core-h', bar.offsetHeight + 'px');
+  }
+  updateCoreH();
+  window.addEventListener('resize', updateCoreH);
+  if (typeof ResizeObserver === 'function') {
+    const coreFlowEl = $('core-flow');
+    if (coreFlowEl) new ResizeObserver(updateCoreH).observe(coreFlowEl);
   }
   const coreUrlInput = $('core-url');
   if (coreUrlInput) {
@@ -1874,6 +2282,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         syncCoreCidDisplay();
         setCoreStatus('已提取 CID：' + cid + '，已填入待筛选目录。点「一键索引」或「一键同步到云」开始。');
+        // 换目录后立即按新 CID 刷新计数：新目录不显示旧目录的喜欢数。
+        loadStats(cid).catch(() => {});
       } else if (value.trim()) {
         setCoreStatus('未从该网址提取到数字 CID：分享链接请先在 115 里打开，复制带 ?cid= 的文件夹网址，或直接粘贴数字 CID。', true);
       } else {
@@ -1888,7 +2298,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!(await ensureConfigSaved())) return;
       setCoreStatus('正在提交索引任务…');
       await launch('sync_cloud', false);
-      setCoreStatus('索引任务已提交，正在后台同步 115 目录（进度见任务中心）。');
+      pollCoreProgress();
     } catch (error) { setCoreStatus('索引任务提交失败：' + (error.message || '请稍后重试'), true); }
     finally { btn.disabled = false; }
   });
@@ -1898,19 +2308,34 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       if (!(await ensureConfigSaved())) return;
       setCoreStatus('正在同步到云…');
-      const res = await api('/api/cloud/sync', {body:{}});
-      setCoreStatus(`同步完成：新增待筛 ${number(res.added_pending ?? 0)}，SHA1 去重拦截 ${number(res.dedup_rejected ?? 0)}`);
+      const res = await api('/api/cloud/sync', {body:{async:true}});
+      let progress, failures = 0;
+      for (;;) {
+        try {
+          progress = await api('/video-paths/index/progress?task_id=' + encodeURIComponent(res.task_id));
+        } catch (e) {
+          if (++failures >= 3) throw e;
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          continue;
+        }
+        failures = 0;
+        if (progress.done) break;
+        setCoreStatus(`正在同步到云…已扫描 ${number(progress.scanned || 0)} 个`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      if (progress.error) throw new Error(progress.error);
+      setCoreStatus(`同步完成：新增待筛 ${number(progress.added ?? 0)}，SHA1 去重拦截 ${number(progress.dedup_rejected ?? 0)}`);
       await loadStats();
       if (window.__dyReloadGrid) window.__dyReloadGrid();
     } catch (error) { setCoreStatus('云端同步失败：' + (error.message || '请先配置 115 Cookie 与目录'), true); }
     finally { btn.disabled = false; }
   });
   /* 核心条需要显示已保存的 CID：配置是打开任务中心时才加载的，这里提前加载一次，
-     失败也不影响页面（点核心按钮时会自动重试加载）。 */
-  loadConfiguration().then(() => { applyPendingCoreCid(); syncCoreCidDisplay(); }).catch(error => { setCoreStatus('115 配置加载失败：' + (error.message || '打开任务中心可重试'), true); });
+     失败也不影响页面（点核心按钮时会自动重试加载）。配置加载完再跑 loadStats，
+     这样计数才能按当前目录（inbox_cid）过滤。 */
+  loadConfiguration().then(() => { applyPendingCoreCid(); syncCoreCidDisplay(); return loadStats(); }).catch(error => { setCoreStatus('115 配置加载失败：' + (error.message || '打开任务中心可重试'), true); });
   /* 核心条的待筛选/精选计数：loadStats 原本只在打开任务中心时运行，这里提前跑一次
      （只读 GET /library/stats），失败时计数保持 “—”，不影响页面。 */
-  loadStats().catch(() => {});
   document.addEventListener('click',safe(async event => {
     const dislikeRemove = event.target.closest('[data-dislike-remove]');
     if (dislikeRemove) {
@@ -1921,21 +2346,26 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     const launchButton = event.target.closest('[data-launch]');
-    if (launchButton) return await launch(launchButton.dataset.launch,launchButton.dataset.dryRun === 'true');
+    if (launchButton) {
+      const action = launchButton.dataset.launch;
+      const params = action === 'move_small_videos' ? sizeParams() : (action === 'mark_small_indexed' ? sizeParams() : (action === 'move_large_videos' ? sizeParamsLarge() : (action === 'prefetch_thumbnails' ? prefetchParams() : (action === 'settle_local' ? {folder: ($('local-settle-folder')?.value || '').trim()} : undefined))));
+      return await launch(action, launchButton.dataset.dryRun === 'true', params);
+    }
     const select = event.target.closest('[data-select-task]');
     if (select) { selectedId = select.dataset.selectTask; detailSignature = ''; historySignature = ''; renderHistory(); return await loadDetail(); }
     const cancel = event.target.closest('[data-cancel-task]');
     if (cancel) { cancel.disabled = true; try { await api(`/star/tasks/${cancel.dataset.cancelTask}/cancel`,{body:{}}); notify('已请求取消'); await poll(); } catch (error) { cancel.disabled = false; throw error; } }
     const retry = event.target.closest('[data-retry-task]');
-    if (retry) { const task = tasks.find(t => t.id === retry.dataset.retryTask); if (task) await launch(task.action,task.dry_run); }
+    if (retry) { const task = tasks.find(t => t.id === retry.dataset.retryTask); if (task) await launch(task.action,task.dry_run,task.params); }
   }));
   $('refresh-tasks').addEventListener('click',() => { void poll(); });
   document.addEventListener('visibilitychange',() => { clearTimeout(pollTimer); if (!document.hidden && taskDialog.open) void poll(); });
   window.addEventListener('pagehide',() => clearTimeout(pollTimer));
   async function initialize() {
-    const results = await Promise.allSettled([loadConfiguration(),loadStats(),loadDislikeData()]);
+    const results = await Promise.allSettled([loadConfiguration().then(() => loadStats()),loadDislikeData(),loadLocalStatus()]);
     results.forEach(result => { if (result.status === 'rejected') notify(result.reason.message,true); });
     applyPendingCoreCid(); syncCoreCidDisplay();
+    initSizeHistogram();
     if (!config) {
       $('save-state').textContent = '配置加载失败，可点重新读取';
       $('config-fields').disabled = false;

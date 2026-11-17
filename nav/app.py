@@ -60,7 +60,7 @@ def current_user(request):
 
 
 SERVICES = [
-    ("mac-compute", "https://cp.zin7.de/", "Mac 上的计算服务：ASR、视频转码、OCR、VPS 探测"),
+    ("mac-compute", "/service/mac-compute", "Mac 上的计算服务：ASR、视频转码、OCR、VPS 探测；详情页有各项目的订阅链接"),
     ("Home Assistant", "https://ha.zin7.de/", "智能家居（华为云，Mac 转发）"),
     ("Status 状态面板", "https://status.mac.zin7.de/", "路由器和设备状态"),
     ("proxy-test 代理测试", "/proxy-test/", "订阅节点测试：直连 / 中继、速度对比"),
@@ -68,7 +68,48 @@ SERVICES = [
     ("dy 115 视频筛选", "/dy/", "115 云端视频预筛：在线播放、打标、结算归档"),
     ("DJI 视频压缩", "/dji/", "DJI 视频压缩：HEVC 硬件加速，上传或指定 Mac 上的路径"),
     ("路况监测", "/traffic/", "指定路段/路线拥堵监测：实时状态、今日曲线、历史与热力图"),
+    ("知乎提取", "/zhihu/", "知乎文章/回答提取 + YouTube/Bilibili 视频转文字"),
 ]
+
+# mac-compute per-project token links (same scopes as mac-compute's
+# TOKEN_SCOPES). The nav detail page reads these token files at render
+# time, so a regeneration updates the displayed link automatically.
+MC_TOKEN_SCOPES = [
+    ("asr", "语音转文字 (ASR)", "音频 / 视频转文字"),
+    ("video_transcode", "视频转码", "视频转码 / 压缩"),
+    ("ocr", "OCR 图片转文字", "图片 / PDF 转文字"),
+]
+
+
+def _mc_token(scope):
+    """Current mac-compute token for one project (read at render time)."""
+    try:
+        with open("/Users/zin/mac-compute/token_%s" % scope) as f:
+            tok = f.read().strip()
+        if len(tok) == 32 and all(c in "0123456789abcdef" for c in tok):
+            return tok
+    except Exception:
+        pass
+    return None
+
+
+SERVICE_DETAIL_HTML = """<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__NAME__ · 导航</title>
+<style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;max-width:640px;margin:40px auto;padding:0 16px;color:#222;background:#fafafa}
+h1{font-size:22px}h2{font-size:17px}a{color:#0b5fff;text-decoration:none}
+.card{background:#fff;border:1px solid #e3e3e3;border-radius:10px;margin:12px 0;padding:14px 16px}
+p{margin:6px 0;color:#666;font-size:14px}code{background:#f0f0f0;padding:2px 6px;font-size:13px;word-break:break-all}
+button{margin-left:8px;padding:4px 10px;border:1px solid #ccc;border-radius:6px;background:#fff;font-size:13px}
+.top{text-align:right;font-size:13px}.top a{color:#888}</style></head><body>
+<div class="top"><a href="/">← 导航</a> · <a href="/logout">退出登录</a></div>
+<h1>__NAME__</h1>
+<p>__DESC__</p>
+<div class="card"><a href="__URL__">打开控制台 →</a></div>
+__BODY__
+<script>
+async function copyLink(url,btn){try{await navigator.clipboard.writeText(url);btn.textContent='已复制';setTimeout(()=>btn.textContent='复制',1500);}catch(e){prompt('复制这个链接：',url);}}
+</script></body></html>"""
 
 LANDING_HTML = """<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -140,6 +181,53 @@ def index(request: Request):
         li = ('<li><a href="https://cpl.zin7.de/ping/%s/">ping-test IP 延迟测试</a>'
               '<p>测 IP / 域名延迟：ping + TCP，10 线程并行；公开 token 链接，打开就能测</p></li>') % tok
         html = html.replace("</ul>", li + "</ul>")
+    return html
+
+
+@app.get("/service/{name}", response_class=HTMLResponse)
+def service_detail(name: str, request: Request):
+    """Minimal per-service detail view (login-gated). The nav previously
+    had no detail page — just the landing list. mac-compute's detail
+    page lists its per-project token links (read from the token files
+    at render time) so the user can copy a link and hand it to other
+    callers; other services show their info and a note that they have
+    no token link yet."""
+    if not current_user(request):
+        return RedirectResponse("/login", status_code=302)
+    svc = None
+    for n, url, desc in SERVICES:
+        if n == name:
+            svc = (n, url, desc)
+            break
+    if not svc:
+        return HTMLResponse("没有这个服务。", status_code=404)
+    n, url, desc = svc
+    console = "https://cp.zin7.de/" if n == "mac-compute" else url
+    if n == "mac-compute":
+        cards = []
+        for scope, label, sdesc in MC_TOKEN_SCOPES:
+            tok = _mc_token(scope)
+            if tok:
+                link = "https://cp.zin7.de/t/%s/%s/" % (scope, tok)
+                cards.append(
+                    '<div class="card"><b>%s</b><p>%s</p>'
+                    '<code>%s</code>'
+                    '<button onclick="copyLink(\'%s\',this)">复制</button>'
+                    '<p>只读：看这个项目的任务、进度和调用说明，不用登录；不能提交、不能下载。</p></div>'
+                    % (label, sdesc, link, link))
+            else:
+                cards.append(
+                    '<div class="card"><b>%s</b><p>%s</p>'
+                    '<p>还没有生成这个项目的订阅链接：先打开控制台一次（会自动生成）。</p></div>'
+                    % (label, sdesc))
+        body = ('<h2>订阅链接（token 链接）</h2>'
+                '<p>把链接发给别人，对方打开就能看这个项目的任务和进度，不用登录。链接里的 token 就是凭证，别公开贴出去；想换 token，去控制台的“订阅链接”里点“重新生成”。</p>'
+                + "".join(cards))
+    else:
+        body = '<p>这个服务还没有订阅链接。</p>'
+    html = (SERVICE_DETAIL_HTML.replace("__NAME__", n)
+            .replace("__DESC__", desc).replace("__URL__", console)
+            .replace("__BODY__", body))
     return html
 
 

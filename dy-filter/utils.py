@@ -110,6 +110,7 @@ class Video(Base):
     sha1 = Column(String, default='', index=True)
     rel_path = Column(String, default='')            # 相对输入根目录的路径，保持原目录结构
     parent_cid = Column(String, default='')
+    inbox_cid = Column(String, default='', index=True)  # 同步来源的 115 待筛选目录根 CID（喜欢/待筛计数按它绑定目录）
     duration = Column(Integer, default=0)
     thumb = Column(String, default='')
     status = Column(String, default=STATUS_PENDING, index=True)
@@ -131,6 +132,44 @@ class DislikedVideo(Base):
     name = Column(String, default='')                    # 原始文件名（若已知）
     source = Column(String, default='manual')            # 'manual' | 'import' | 'sync'
     created_at = Column(DateTime, default=datetime.datetime.now, nullable=False)
+
+
+class FileCache(Base):
+    """通用文件身份缓存（加速模块，非替代）。
+
+    键：相对路径 rel_path（/ 分隔，相对同步根目录；本地文件则相对本地根目录）。
+    一个相对路径一份身份：同一份文件可能来自 115、来自本地，或两者都有。
+
+    设计约束（2026-11-17，用户定）：
+    1. 加速而非替代：可选的快路径。命中且可用的条目复用已知哈希，跳过重复
+       读文件算哈希；未命中、缓存为空、或任何存疑时一律回落传统路径（照常
+       算哈希），传统模式的行为与输出完全不变。缓存缺失时不改变任何结果。
+    2. 跨来源兼容：不绑定 115。file_id / pickcode / inbox_cid 均可为空；
+       origin 记录条目来源（'115' | 'local' | 'both'），本地-only 文件同样
+       可建条目、同样可查（为将来纯本地筛选预留）。
+    3. 两种哈希分开存，绝不互相替代：115 全文件 SHA1（sha1_full）与本地
+       头部 SHA1（前 1MB，sha1_head）是不同值。本地行沿用头部哈希做去重 /
+       不喜欢匹配（与传统模式一致），云端行沿用全文件哈希；缓存只负责把
+       “已经算过 / 已经拿到”的哈希值按相对路径存起来复用。清单导出时头部
+       哈希优先，只有全哈希的条目导出全哈希并标明 sha1_kind='full'，供从
+       115 下载到本地的文件复用——其 Video.sha1 本就是全哈希，与 115 库内
+       行完全一致，去重 / 不喜欢匹配反而更准（2026-11-17 补：移出大文件后
+       下载到本地再索引，正是缓存要加速的流程）。
+    4. 内部标记 indexed：1 表示该文件已在平台内完成索引（小文件无需再下载
+       到本地、也无需再本地重索引），由任务中心“标记小文件已索引”动作设置；
+       它只是工作流记录，不改变筛选队列、分数或状态。
+    """
+    __tablename__ = 'file_cache'
+    rel_path = Column(String, primary_key=True)          # 相对路径（/ 分隔）
+    size = Column(BigInteger, default=0)                 # 文件字节数（命中时校验，不一致即未命中）
+    sha1_full = Column(String, default='')               # 全文件 SHA1（115 原生，大写 40 位 hex）
+    sha1_head = Column(String, default='')               # 头部 SHA1（前 1MB，大写 40 位 hex）
+    origin = Column(String, default='')                  # '115' | 'local' | 'both' | ''
+    file_id = Column(String, default='')                 # 115 file_id（本地-only 时为空）
+    pickcode = Column(String, default='')                # 115 pick_code（本地-only 时为空）
+    inbox_cid = Column(String, default='')               # 115 待筛选根 CID（本地-only 时为空）
+    indexed = Column(Integer, default=0)                 # 1=已在平台内完成索引（无需下载/重索引）
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
 
 class VideoPreviewEvent(Base):
@@ -259,6 +298,7 @@ def init_db():
                 ('sha1', "TEXT DEFAULT ''"),
                 ('rel_path', "TEXT DEFAULT ''"),
                 ('parent_cid', "TEXT DEFAULT ''"),
+                ('inbox_cid', "TEXT DEFAULT ''"),
                 ('duration', 'INTEGER DEFAULT 0'),
                 ('thumb', "TEXT DEFAULT ''"),
                 ('status', "TEXT DEFAULT 'pending'"),
@@ -271,6 +311,14 @@ def init_db():
             for col_name, col_def in migrations:
                 if col_name not in columns:
                     conn.exec_driver_sql(f'ALTER TABLE videos ADD COLUMN {col_name} {col_def}')
+
+            # 一次性回填：inbox_cid 列是 2026-11-15 新增的，此前库内全部视频都来自
+            # 唯一的旧待筛选目录 3548436729486640425（2026-11-13 起的唯一 inbox），
+            # 统一补上，之后新同步的视频由 sync_cloud_videos 写入各自的 root_cid。
+            conn.exec_driver_sql(
+                "UPDATE videos SET inbox_cid = '3548436729486640425' "
+                "WHERE (inbox_cid IS NULL OR inbox_cid = '') AND source_type != 'local_history'"
+            )
 
             # 将旧库中没有 status 的记录按 score 同步初始 status
             conn.exec_driver_sql(
@@ -290,6 +338,7 @@ def init_db():
                 ('file_id', 'file_id'),
                 ('pickcode', 'pickcode'),
                 ('sha1', 'sha1'),
+                ('inbox_cid', 'inbox_cid'),
                 ('status', 'status'),
             ]:
                 conn.exec_driver_sql(f'CREATE INDEX IF NOT EXISTS ix_videos_{idx_name} ON videos ({col})')
@@ -391,6 +440,414 @@ def count_disliked() -> int:
         return session.query(DislikedVideo).count()
 
 
+# ================= 文件身份缓存（加速模块，非替代） =================
+# 约束见 FileCache 模型 docstring：命中复用已知哈希、跳过重复读文件算哈希；
+# 未命中 / 存疑时回落传统路径，传统模式行为与输出不变；不绑定 115，本地-only
+# 文件同样可建条目；两种哈希分开存，绝不互相替代。
+
+_CACHE_ORIGINS = ('115', 'local', 'both')
+
+
+def normalize_cache_rel_path(rel) -> str:
+    """缓存键规范化：/ 分隔、去首尾空白与重复斜杠；绝对路径、.. 段、空值返回 ''。"""
+    if not isinstance(rel, str):
+        return ''
+    rel = rel.replace('\\', '/').strip()
+    if not rel or rel.startswith('/') or '\x00' in rel:
+        return ''
+    parts = [p for p in rel.split('/') if p not in ('', '.')]
+    if not parts or '..' in parts:
+        return ''
+    return '/'.join(parts)
+
+
+def _merge_origin(existing: str, new: str) -> str:
+    existing = (existing or '').strip()
+    new = (new or '').strip()
+    if not new:
+        return existing
+    if not existing:
+        return new
+    if existing == new:
+        return existing
+    if existing in _CACHE_ORIGINS and new in _CACHE_ORIGINS:
+        return 'both'
+    return existing
+
+
+def cache_lookup(rel_path, size=None):
+    """按相对路径查缓存（容错查找，永不抛异常）。
+
+    返回 dict（rel_path / size / sha1_full / sha1_head / origin / file_id /
+    pickcode / inbox_cid / indexed）或 None。大小不一致即未命中（返回 None），
+    绝不报错；调用方按未命中走传统路径。
+    """
+    rel = normalize_cache_rel_path(rel_path)
+    if not rel:
+        return None
+    try:
+        init_db()
+        with Session() as session:
+            row = session.get(FileCache, rel)
+            if row is None:
+                return None
+            if size is not None:
+                try:
+                    if int(size) != int(row.size or 0) and int(row.size or 0) > 0:
+                        return None
+                except (TypeError, ValueError):
+                    return None
+            return {
+                'rel_path': row.rel_path,
+                'size': int(row.size or 0),
+                'sha1_full': normalize_sha1(row.sha1_full or ''),
+                'sha1_head': normalize_sha1(row.sha1_head or ''),
+                'origin': row.origin or '',
+                'file_id': row.file_id or '',
+                'pickcode': row.pickcode or '',
+                'inbox_cid': row.inbox_cid or '',
+                'indexed': 1 if row.indexed else 0,
+            }
+    except Exception:
+        return None
+
+
+def cache_upsert(rel_path, size=None, sha1_full=None, sha1_head=None,
+                 origin=None, file_id=None, pickcode=None, inbox_cid=None,
+                 indexed=None):
+    """新建或更新一条缓存条目（容错，失败返回 False，不抛异常）。
+
+    只用非空值覆盖已有字段：115 同步只写 sha1_full / file_id / pickcode /
+    inbox_cid，本地同步只写 sha1_head，互不覆盖对方已知的哈希。origin 按
+    _merge_origin 合并（'115' + 'local' -> 'both'）。indexed 仅当明确传入
+    0/1 时才改。
+    """
+    rel = normalize_cache_rel_path(rel_path)
+    if not rel:
+        return False
+    try:
+        init_db()
+        with Session() as session:
+            row = session.get(FileCache, rel)
+            if row is None:
+                row = FileCache(rel_path=rel)
+                session.add(row)
+            if size is not None:
+                try:
+                    row.size = int(size)
+                except (TypeError, ValueError):
+                    pass
+            full = normalize_sha1(sha1_full) if sha1_full is not None else ''
+            if full:
+                row.sha1_full = full
+            head = normalize_sha1(sha1_head) if sha1_head is not None else ''
+            if head:
+                row.sha1_head = head
+            if origin:
+                row.origin = _merge_origin(row.origin or '', origin)
+            if file_id:
+                row.file_id = str(file_id)
+            if pickcode:
+                row.pickcode = str(pickcode)
+            if inbox_cid:
+                row.inbox_cid = str(inbox_cid)
+            if indexed is not None:
+                row.indexed = 1 if indexed else 0
+            row.updated_at = datetime.datetime.now()
+            session.commit()
+            return True
+    except Exception:
+        return False
+
+
+def cache_upsert_many(entries):
+    """批量写入缓存条目（单会话单提交，供 115 同步等大批量场景用）。
+
+    entries: list of dict，键同 cache_upsert。语义同 cache_upsert（只用非空值
+    覆盖，origin 合并）。返回写入的条数。失败不抛异常。
+    """
+    items = []
+    for e in (entries or []):
+        if not isinstance(e, dict):
+            continue
+        rel = normalize_cache_rel_path(e.get('rel_path'))
+        if not rel:
+            continue
+        items.append({
+            'rel_path': rel,
+            'size': e.get('size'),
+            'sha1_full': normalize_sha1(e.get('sha1_full')) if e.get('sha1_full') is not None else '',
+            'sha1_head': normalize_sha1(e.get('sha1_head')) if e.get('sha1_head') is not None else '',
+            'origin': (e.get('origin') or '').strip(),
+            'file_id': str(e.get('file_id') or ''),
+            'pickcode': str(e.get('pickcode') or ''),
+            'inbox_cid': str(e.get('inbox_cid') or ''),
+            'indexed': e.get('indexed'),
+        })
+    if not items:
+        return 0
+    try:
+        init_db()
+        with Session() as session:
+            rels = [it['rel_path'] for it in items]
+            existing = {r.rel_path: r for r in
+                        session.query(FileCache).filter(FileCache.rel_path.in_(rels)).all()}
+            now = datetime.datetime.now()
+            count = 0
+            for it in items:
+                row = existing.get(it['rel_path'])
+                if row is None:
+                    row = FileCache(rel_path=it['rel_path'])
+                    session.add(row)
+                    existing[it['rel_path']] = row
+                if it['size'] is not None:
+                    try:
+                        row.size = int(it['size'])
+                    except (TypeError, ValueError):
+                        pass
+                if it['sha1_full']:
+                    row.sha1_full = it['sha1_full']
+                if it['sha1_head']:
+                    row.sha1_head = it['sha1_head']
+                if it['origin']:
+                    row.origin = _merge_origin(row.origin or '', it['origin'])
+                if it['file_id']:
+                    row.file_id = it['file_id']
+                if it['pickcode']:
+                    row.pickcode = it['pickcode']
+                if it['inbox_cid']:
+                    row.inbox_cid = it['inbox_cid']
+                if it['indexed'] is not None:
+                    row.indexed = 1 if it['indexed'] else 0
+                row.updated_at = now
+                count += 1
+            session.commit()
+            return count
+    except Exception:
+        return 0
+
+
+def cache_rename_many(pairs) -> int:
+    """批量改名缓存键（按大小整理移动文件时调用，保持缓存与 Video.rel_path 一致）。
+
+    pairs: [(old_rel, new_rel), ...]。目标键已存在或旧键不存在时跳过该条；
+    返回实际改名的条数。失败不抛异常。
+    """
+    norm = []
+    for old_rel, new_rel in (pairs or []):
+        old = normalize_cache_rel_path(old_rel)
+        new = normalize_cache_rel_path(new_rel)
+        if old and new and old != new:
+            norm.append((old, new))
+    if not norm:
+        return 0
+    try:
+        init_db()
+        with Session() as session:
+            olds = [o for o, _ in norm]
+            news = [n for _, n in norm]
+            existing_old = {r.rel_path: r for r in
+                            session.query(FileCache).filter(FileCache.rel_path.in_(olds)).all()}
+            existing_new = {r.rel_path for r in
+                            session.query(FileCache.rel_path).filter(FileCache.rel_path.in_(news)).all()}
+            count = 0
+            for old, new in norm:
+                row = existing_old.get(old)
+                if row is None or new in existing_new:
+                    continue
+                session.delete(row)
+                session.flush()
+                session.add(FileCache(
+                    rel_path=new,
+                    size=row.size,
+                    sha1_full=row.sha1_full or '',
+                    sha1_head=row.sha1_head or '',
+                    origin=row.origin or '',
+                    file_id=row.file_id or '',
+                    pickcode=row.pickcode or '',
+                    inbox_cid=row.inbox_cid or '',
+                    indexed=row.indexed or 0,
+                ))
+                existing_new.add(new)
+                count += 1
+            session.commit()
+            return count
+    except Exception:
+        return 0
+
+
+def cache_rename_rel_path(old_rel, new_rel) -> bool:
+    """缓存键改名（按大小整理移动文件时调用，保持缓存与 Video.rel_path 一致）。
+
+    目标键已存在时不覆盖（返回 False）；旧键不存在返回 False。失败不抛异常。
+    """
+    old = normalize_cache_rel_path(old_rel)
+    new = normalize_cache_rel_path(new_rel)
+    if not old or not new or old == new:
+        return False
+    try:
+        init_db()
+        with Session() as session:
+            row = session.get(FileCache, old)
+            if row is None:
+                return False
+            if session.get(FileCache, new) is not None:
+                return False
+            session.delete(row)
+            session.flush()
+            session.add(FileCache(
+                rel_path=new,
+                size=row.size,
+                sha1_full=row.sha1_full or '',
+                sha1_head=row.sha1_head or '',
+                origin=row.origin or '',
+                file_id=row.file_id or '',
+                pickcode=row.pickcode or '',
+                inbox_cid=row.inbox_cid or '',
+                indexed=row.indexed or 0,
+            ))
+            session.commit()
+            return True
+    except Exception:
+        return False
+
+
+def cache_mark_indexed(rel_paths) -> int:
+    """把给定相对路径的缓存条目标记为已索引（indexed=1）。
+
+    只标记已存在的条目（不新建）；返回实际标记的条数。失败不抛异常。
+    """
+    rels = [normalize_cache_rel_path(r) for r in (rel_paths or [])]
+    rels = [r for r in rels if r]
+    if not rels:
+        return 0
+    try:
+        init_db()
+        with Session() as session:
+            rows = session.query(FileCache).filter(FileCache.rel_path.in_(rels)).all()
+            for row in rows:
+                row.indexed = 1
+                row.updated_at = datetime.datetime.now()
+            session.commit()
+            return len(rows)
+    except Exception:
+        return 0
+
+
+def cache_stats() -> dict:
+    """缓存统计（供任务中心 / API 展示）：总数、已索引数、含全哈希数、含头部哈希数、按来源计数。"""
+    try:
+        init_db()
+        with Session() as session:
+            total = session.query(FileCache).count()
+            indexed = session.query(FileCache).filter(FileCache.indexed == 1).count()
+            with_full = session.query(FileCache).filter(FileCache.sha1_full != '').count()
+            with_head = session.query(FileCache).filter(FileCache.sha1_head != '').count()
+            by_origin = {}
+            for origin, cnt in session.query(FileCache.origin, func.count(FileCache.rel_path)).group_by(FileCache.origin).all():
+                by_origin[origin or ''] = int(cnt)
+            return {
+                'total': int(total), 'indexed': int(indexed),
+                'with_full_sha1': int(with_full), 'with_head_sha1': int(with_head),
+                'by_origin': by_origin,
+            }
+    except Exception:
+        return {'total': 0, 'indexed': 0, 'with_full_sha1': 0, 'with_head_sha1': 0, 'by_origin': {}}
+
+
+def cache_export_entries():
+    """导出客户端清单用条目：含头部哈希或全文件哈希的条目。
+
+    客户端用它跳过读文件算哈希：清单里的 sha1 即要复用的哈希值，sha1_kind
+    标明其形式（'head'=头部哈希，'full'=115 全文件哈希）。头部哈希优先
+    （与客户端现算的值同形式）；只有全哈希的条目（典型：115 同步建的条目，
+    对应用户从 115 下载到本地的大文件）导出全哈希——下载下来的 115 文件
+    其 Video.sha1 本就是全哈希，与 115 库内行完全一致，去重 / 不喜欢匹配
+    反而更准。返回 [{rel_path, size, sha1, sha1_kind, origin}]（按 rel_path
+    排序）。两种哈希都没有的条目不导出。
+    """
+    try:
+        init_db()
+        with Session() as session:
+            rows = (session.query(FileCache)
+                    .filter(or_(FileCache.sha1_head != '',
+                                FileCache.sha1_full != ''))
+                    .order_by(FileCache.rel_path).all())
+            out = []
+            for r in rows:
+                head = normalize_sha1(r.sha1_head or '')
+                if head:
+                    sha1, kind = head, 'head'
+                else:
+                    sha1, kind = normalize_sha1(r.sha1_full or ''), 'full'
+                if not sha1:
+                    continue
+                out.append({
+                    'rel_path': r.rel_path,
+                    'size': int(r.size or 0),
+                    'sha1': sha1,
+                    'sha1_kind': kind,
+                    'origin': r.origin or '',
+                })
+            return out
+    except Exception:
+        return []
+
+
+def cache_lookup_many(rel_paths):
+    """批量按相对路径查缓存（单会话单查询，永不抛异常）。
+
+    返回 {rel_path: dict}（dict 字段同 cache_lookup；查不到的相对路径不在
+    结果里）。供本地同步写回时批量分类哈希形式用，避免逐条查库。不做
+    大小校验（调用方自行按需校验）。
+    """
+    rels = []
+    for rp in (rel_paths or []):
+        r = normalize_cache_rel_path(rp)
+        if r and r not in rels:
+            rels.append(r)
+    if not rels:
+        return {}
+    try:
+        init_db()
+        with Session() as session:
+            rows = session.query(FileCache).filter(
+                FileCache.rel_path.in_(rels)).all()
+            return {r.rel_path: {
+                'rel_path': r.rel_path,
+                'size': int(r.size or 0),
+                'sha1_full': normalize_sha1(r.sha1_full or ''),
+                'sha1_head': normalize_sha1(r.sha1_head or ''),
+                'origin': r.origin or '',
+                'file_id': r.file_id or '',
+                'pickcode': r.pickcode or '',
+                'inbox_cid': r.inbox_cid or '',
+                'indexed': 1 if r.indexed else 0,
+            } for r in rows}
+    except Exception:
+        return {}
+
+
+def classify_received_sha1(cached_entry, sha1):
+    """把客户端发来的 sha1 按缓存现状分类，返回应写入的（列名，值）。
+
+    cached_entry: cache_lookup / cache_lookup_many 返回的 dict 或 None。
+    sha1: 客户端发来的哈希（归一化前也可，内部统一大写）。
+    规则：等于已存头部哈希→头部哈希；等于已存全哈希→全哈希；都不等（或
+    无缓存条目）→客户端现算的头部哈希。永不把全哈希写进 sha1_head。
+    无效哈希返回 None。
+    """
+    s = normalize_sha1(sha1)
+    if not s:
+        return None
+    if cached_entry:
+        if s == (cached_entry.get('sha1_head') or ''):
+            return ('sha1_head', s)
+        if s == (cached_entry.get('sha1_full') or ''):
+            return ('sha1_full', s)
+    return ('sha1_head', s)
+
+
 # ================= 云端账户与目录配置 =================
 _cloud_config_lock = threading.RLock()
 
@@ -425,6 +882,76 @@ def load_cloud_config() -> dict:
             except (OSError, ValueError):
                 pass
         return cfg
+
+
+# 浏览器 Cookie JSON 快捷导入（2026-11-16）
+# 浏览器 Cookie 导出插件（EditThisCookie / Cookie-Editor 等）导出的 JSON
+# 是一个对象数组，每项形如：
+#   {"domain": ".115.com", "name": "UID", "value": "...", ...}
+# 本函数把它转成 dy-filter 内部用的 Cookie 头字符串
+# （"UID=...; CID=...; SEID=...; ..."），供 save_cloud_config 保存。
+# 去重规则：同名只留一个，优先 .115.com（全站通用）；acw_tc 优先
+# webapi.115.com（主接口域名）。必须包含 UID / CID / SEID 核心三件套，
+# 否则直接报错，列出缺失项。
+REQUIRED_COOKIE_NAMES = ('UID', 'CID', 'SEID')
+
+
+def parse_browser_cookie_json(text: str) -> dict:
+    """Parse browser-exported cookie JSON -> {'cookie': header, 'names': [...]}.
+
+    Accepts a JSON array of cookie objects, or a JSON object wrapping one
+    (e.g. {"cookies": [...]}). Raises ValueError with a clear Chinese
+    message when the input is not usable.
+    """
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError('请先粘贴浏览器导出的 Cookie JSON（数组格式）')
+    try:
+        data = json.loads(text.strip())
+    except ValueError:
+        raise ValueError('不是有效的 JSON：请粘贴浏览器 Cookie 导出插件复制的完整 JSON 数组')
+    if isinstance(data, dict):
+        # 有些导出工具包一层，如 {"cookies": [...]}
+        for key in ('cookies', 'data', 'items'):
+            if isinstance(data.get(key), list):
+                data = data[key]
+                break
+        else:
+            raise ValueError('JSON 里没有找到 Cookie 数组：请确认复制的是浏览器导出的完整 JSON')
+    if not isinstance(data, list) or not data:
+        raise ValueError('JSON 里没有找到 Cookie 数组：请确认复制的是浏览器导出的完整 JSON')
+    # 按域名优先级去重：同名只留一个。
+    # .115.com 最通用；acw_tc 是分域名防刷 token，优先 webapi.115.com。
+    best = {}
+    order = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get('name') or '').strip()
+        value = item.get('value')
+        if not name or value is None:
+            continue
+        value = str(value)
+        if '=' in name or ';' in name or ' ' in name:
+            continue
+        domain = str(item.get('domain') or '').strip().lower()
+        cur = best.get(name)
+        if cur is None:
+            best[name] = (domain, value)
+            order.append(name)
+            continue
+        cur_domain, _ = cur
+        if name == 'acw_tc':
+            if domain == 'webapi.115.com' and cur_domain != 'webapi.115.com':
+                best[name] = (domain, value)
+        elif domain == '.115.com' and cur_domain != '.115.com':
+            best[name] = (domain, value)
+    if not best:
+        raise ValueError('JSON 里没有解析到任何 Cookie：请确认复制的是 115.com 的 Cookie 导出')
+    missing = [n for n in REQUIRED_COOKIE_NAMES if n not in best]
+    if missing:
+        raise ValueError('缺少关键 Cookie（%s）：请确认已登录 115.com 后再导出，导出时不要只选部分 Cookie' % '、'.join(missing))
+    header = '; '.join('%s=%s' % (name, best[name][1]) for name in order)
+    return {'cookie': header, 'names': order, 'count': len(order)}
 
 
 def save_cloud_config(data: dict) -> dict:
@@ -591,13 +1118,13 @@ class P115Manager:
             'local_save_dir': cfg.get('local_save_dir', ''),
         }
 
-    def list_dir_children(self, cid: str | int, show_dir: int = 1, limit: int = 1000) -> list[dict]:
-        """分页拉取指定 115 目录下的全部条目。"""
-        client = self.get_client()
+    def _aps_list(self, client, cid, show_dir: int, limit: int) -> list[dict]:
+        """用 aps 接口（/natsort/files.php）分页拉取一页目录条目。
+        aps 不走被风控的 webapi /files，响应也更快。"""
         offset = 0
         items = []
         while True:
-            resp = client.fs_files({
+            resp = client.fs_files_aps({
                 'cid': int(cid) if str(cid).isdigit() else cid,
                 'limit': limit,
                 'offset': offset,
@@ -614,6 +1141,61 @@ class P115Manager:
             offset += len(batch)
             time.sleep(0.25)
         return items
+
+    def list_dir_children(self, cid: str | int, show_dir: int = 1, limit: int = 1000) -> list[dict]:
+        """分页拉取指定 115 目录下的全部条目。
+        优先用 aps 接口（/natsort/files.php）：webapi /files 自 2026-11-15 起被
+        115 风控（HTTP 405），且程序频繁访问会触发封控、连网页都打不开。
+        aps 的 show_dir=0 返回文件完整信息（含 fid/sha/s），show_dir=1 返回
+        文件+目录的简要信息；目录 = show_dir=1 里不在 show_dir=0 文件集合
+        中的条目（按 cid 区分，cid 是每条目唯一 id）。
+        每次列目录前按 request_interval_seconds 休眠，避免触发 115 风控。
+        aps 失败时回退到 webapi fs_files（若风控解除仍可用）。"""
+        cfg = load_cloud_config()
+        interval = float(cfg.get('request_interval_seconds') or 1.2)
+        # 列目录是同步里最频繁的 115 调用：先休眠，把两次调用隔开，避免触发封控
+        time.sleep(interval)
+        try:
+            files = self._aps_list(self.get_client(), cid, show_dir=0, limit=limit)
+            if show_dir == 0:
+                return files
+            mixed = self._aps_list(self.get_client(), cid, show_dir=1, limit=limit)
+            file_cids = {str(f.get('cid')) for f in files}
+            # 目录 = 简要列表里不在文件集合中的条目（按 cid 区分）。
+            # 兜底：名字带常见文件后缀的（.mp4/.rar/.png 等）一定是文件不是目录，
+            # 即使 cid 对不上也不当目录递归，避免把文件误当目录去列目录。
+            import re as _re
+            _ext = _re.compile(r'\.[A-Za-z0-9]{2,5}$')
+            dirs = [it for it in mixed
+                    if str(it.get('cid')) not in file_cids
+                    and not _ext.search((it.get('n') or '').strip())]
+            return files + dirs
+        except Exception as aps_err:
+            # aps 不可用时回退 webapi（风控解除后仍能工作）；若 webapi 也 405，抛原始错误
+            try:
+                client = self.get_client()
+                offset = 0
+                items = []
+                while True:
+                    resp = client.fs_files({
+                        'cid': int(cid) if str(cid).isdigit() else cid,
+                        'limit': limit,
+                        'offset': offset,
+                        'show_dir': show_dir,
+                    })
+                    if not isinstance(resp, dict):
+                        break
+                    if resp.get('state') is False:
+                        raise RuntimeError(resp.get('error') or resp.get('message') or '115 接口返回错误')
+                    batch = resp.get('data') or []
+                    items.extend(batch)
+                    if len(batch) < limit:
+                        break
+                    offset += len(batch)
+                    time.sleep(0.25)
+                return items
+            except Exception:
+                raise aps_err
 
     @staticmethod
     def _is_dir_item(item: dict) -> bool:
@@ -932,6 +1514,15 @@ def apply_video_filters(query, request_args, session=None):
     """根据前端查询参数构造 SQLAlchemy 查询，返回 (query, use_random)。"""
     # 默认仅展示云端可预览的视频（排除纯本地历史 SHA1 占位记录）
     query = query.filter(or_(Video.source_type != 'local_history', Video.source_type.is_(None)))
+
+    # 视频来源：all（默认）/ cloud（115 云端）/ local（本地来源，Windows 客户端）
+    source_param = (request_args.get('source') or 'all').strip()
+    if source_param == 'cloud':
+        query = query.filter(Video.source_type == 'cloud')
+    elif source_param == 'local':
+        query = query.filter(Video.source_type == 'local')
+    elif source_param not in ('all', ''):
+        raise ValueError('来源筛选无效')
 
     status_param = (request_args.get('status') or '').strip()
     score = request_args.get('score')

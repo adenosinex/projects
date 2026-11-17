@@ -67,7 +67,12 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 GEN204 = "http://www.gstatic.com/generate_204"
 GOOGLE = "https://www.google.com/search?q=hello&hl=en"
 YOUTUBE = "https://www.youtube.com/"
-CFDL = "https://speed.cloudflare.com/__down?bytes=10000000"
+# Download-speed probe (user choice, 2026-11-15): GitHub, NOT Cloudflare.
+# speed.cloudflare.com/__down was returning HTTP 429 on every hit
+# (2026-11-15 15:37, 3/3 rounds), which zeroed the speed of working
+# nodes. The git repo zip is a real ~15 MB file served by GitHub's CDN;
+# it 302-redirects to codeload.github.com, so full_test must follow it.
+DL_URL = "https://github.com/git/git/archive/refs/heads/master.zip"
 
 DELAY_TIMEOUT = 5
 GOOGLE_TIMEOUT = 20
@@ -299,7 +304,7 @@ def full_test(proxy_url):
     Download uses the slow-speed abort."""
     g = _curl(proxy_url, GOOGLE, GOOGLE_TIMEOUT, follow=True, ua=True)
     y = _curl(proxy_url, YOUTUBE, YOUTUBE_TIMEOUT, ua=True)
-    d = _curl(proxy_url, CFDL, DL_TIMEOUT,
+    d = _curl(proxy_url, DL_URL, DL_TIMEOUT, follow=True,
               slow_limit=SLOW_LIMIT_BPS, slow_time=SLOW_TIME_S)
     return {"google": g, "youtube": y, "download": d}
 
@@ -453,6 +458,35 @@ def run_parallel(run_dir, proxies, test_names=None, progress_cb=None,
     return [results.get(p["name"]) for p in proxies]
 
 
+def _exit_pref(name):
+    """Exit-provider preference for relay chains (IP quality first).
+
+    shoc (fraud 0/100) is preferred, debi (30/100) is the fallback,
+    anything else last. Matched on the node name (case-insensitive).
+    """
+    n = str(name or "").lower()
+    if "shoc" in n:
+        return 0
+    if "debi" in n:
+        return 1
+    return 2
+
+
+def _pick_exits(main_ok, count=5):
+    """Pick the exit nodes for relay chains, shoc first then debi.
+
+    main_ok is already sorted by direct speed (fastest first). Take up
+    to 3 shoc exits, then up to 3 debi exits, then the rest, capped at
+    `count` total — so shoc is preferred but debi is always in the mix
+    as a fallback when available, and the chain test (not this pick)
+    is what decides usability.
+    """
+    shoc = [r for r in main_ok if _exit_pref(r.get("name")) == 0]
+    debi = [r for r in main_ok if _exit_pref(r.get("name")) == 1]
+    other = [r for r in main_ok if _exit_pref(r.get("name")) == 2]
+    return (shoc[:3] + debi[:3] + other)[:count]
+
+
 def run_convert_flow(run_dir, main_nodes, aux_nodes, progress_cb=None,
                      max_workers=MAX_WORKERS):
     """Two-phase flow for sub-convert.
@@ -519,7 +553,7 @@ def run_convert_flow(run_dir, main_nodes, aux_nodes, progress_cb=None,
                   if r.get("role") == "aux" and speed_of(r) > 0]
         main_ok.sort(key=speed_of, reverse=True)
         aux_ok.sort(key=speed_of, reverse=True)
-        top_exits = main_ok[:5]
+        top_exits = _pick_exits(main_ok, 5)
         top_relays = aux_ok[:5]
         # map result name -> node dict
         by_name = {}

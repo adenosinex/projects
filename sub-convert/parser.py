@@ -26,7 +26,7 @@ LINK_SCHEMES = ("vmess://", "vless://", "trojan://", "ss://",
                 "hysteria2://", "hysteria://", "anytls://", "tuic://")
 
 INFO_NAME_PATTERNS = ("剩余流量", "套餐到期", "过滤掉", "流量", "到期", "套餐",
-                      "有效期", "余额")
+                      "有效期", "余额", "重置")
 GROUP_TYPES = {"select", "url-test", "fallback", "load-balance", "relay"}
 
 

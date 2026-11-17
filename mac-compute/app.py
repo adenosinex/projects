@@ -6,7 +6,11 @@ salted PBKDF2 hash in auth.json, mode 600, shared with the router
 status dashboard). First visit shows a setup form; after that,
 browser users log in once on the homepage (session cookie) and
 API clients send HTTP Basic Auth or header X-Access-Code carrying
-the password.
+the password. Per-project token links (see TOKEN_SCOPES) are also
+valid API credentials, scoped to that project's job types only:
+a token is accepted as X-Access-Code, Authorization: Bearer,
+?token= / ?access_code=, or a form field access_code / token.
+The console password still grants full access (all projects + admin).
 """
 import base64
 import hashlib
@@ -32,7 +36,7 @@ import stats as sysstats
 import auth_store
 from config import (
     APPLE_CERT_FILE, APPLE_KEY_FILE,
-    AUTH_COOKIE, CERT_FILE, CP_CERT_FILE, CP_KEY_FILE, DATA,
+    AUTH_COOKIE, BASE, CERT_FILE, CP_CERT_FILE, CP_KEY_FILE, DATA,
     DATA_DIR_MAX_GB, DELETE_INPUT_AFTER_DONE_TYPES, DISK_FREE_MIN_GB,
     HEAVY_TYPES, HISTORY_MAX_AGE_DAYS, HISTORY_MAX_JOBS,
     HISTORY_PRUNE_INTERVAL_SECONDS,
@@ -104,17 +108,313 @@ def _is_authed(request: Request):
     return False
 
 
-def _require_auth(request: Request):
-    if not _is_authed(request):
-        if not auth_store.credentials_exist():
-            raise HTTPException(
-                401,
-                "not set up yet: open the homepage in a browser to "
-                "create a username and password")
-        raise HTTPException(
+def _unauth_error():
+    if not auth_store.credentials_exist():
+        return HTTPException(
             401,
-            "login required: HTTP Basic Auth (username:password) or "
-            "header X-Access-Code with the password")
+            "not set up yet: open the homepage in a browser to "
+            "create a username and password")
+    return HTTPException(
+        401,
+        "login required: HTTP Basic Auth (username:password) or "
+        "header X-Access-Code with the password (or a project token)")
+
+
+def _require_auth(request: Request):
+    """Console-only auth (session cookie, Basic Auth, or the console
+    password via any channel). A project token gets 403 here: it is a
+    valid credential, but not an admin credential. Job endpoints do
+    not use this; they resolve the credential inline (see
+    _resolve_credential) and scope it to the token's project."""
+    kind, _scope = _resolve_credential(request)
+    if kind == "console":
+        return
+    if kind == "scope":
+        raise HTTPException(
+            403,
+            "this endpoint requires the console password; "
+            "project tokens cannot use it")
+    raise _unauth_error()
+
+
+# --- Per-project token links (subscription links, full API credentials) ---
+# Each project gets its OWN token and its OWN task page — not one
+# generic token for the whole service. A token is a credential
+# (random 32-hex, file mode 600) for THAT project only: the holder can
+# submit that project's jobs, check status/progress, and download
+# results, without the console username/password. The token is
+# accepted as X-Access-Code, Authorization: Bearer, ?token= /
+# ?access_code=, or a form field access_code / token (see
+# _resolve_credential). The console password still grants full access
+# (all projects + admin); admin endpoints (token-links, regenerate,
+# stats, github, prune, delete/cancel/retry) stay console-only.
+# Wrong scope or wrong/missing token -> 404 (do not reveal that the
+# path exists), same pattern as ping-test's /ping/<token>/.
+# Public link base: the cp.zin7.de nginx proxies everything to this
+# app and has no auth_request gate, so the token link is
+# https://cp.zin7.de/t/<scope>/<token>/ and needs no nginx change;
+# the token check in this app is the gate.
+TOKEN_SCOPES = {
+    "asr": {
+        "label": "语音转文字 (ASR)",
+        "desc": "音频 / 视频转文字",
+        "types": ("asr", "asr_batch"),
+    },
+    "video_transcode": {
+        "label": "视频转码",
+        "desc": "视频转码 / 压缩",
+        "types": ("video_transcode",),
+    },
+    "ocr": {
+        "label": "OCR 图片转文字",
+        "desc": "图片 / PDF 转文字",
+        "types": ("ocr",),
+    },
+}
+_TOKEN_FILE_FMT = "token_%s"  # under BASE, mode 600
+_HEX32 = re.compile(r"^[0-9a-f]{32}$")
+_TOKEN_BASE_URL = "https://cp.zin7.de"
+
+
+def _scope_token_path(scope):
+    return BASE / (_TOKEN_FILE_FMT % scope)
+
+
+def _load_scope_token(scope):
+    """Current token for a scope; auto-generate on first use (mode 600)."""
+    p = _scope_token_path(scope)
+    try:
+        tok = p.read_text().strip()
+        if _HEX32.match(tok):
+            return tok
+    except OSError:
+        pass
+    tok = secrets.token_hex(16)
+    p.write_text(tok)
+    os.chmod(p, 0o600)
+    return tok
+
+
+def _check_scope_token(scope, token):
+    """Wrong scope or wrong/missing token -> 404. Re-reads the file on
+    every check, so a regeneration takes effect immediately (no restart)."""
+    if scope not in TOKEN_SCOPES:
+        raise HTTPException(404, "not found")
+    if not token or not hmac.compare_digest(token, _load_scope_token(scope)):
+        raise HTTPException(404, "not found")
+
+
+def _match_scope_token(value):
+    """If value is a project token, return its scope; else None.
+    Re-reads the token files on every call (regeneration immediate)."""
+    if not value or not _HEX32.match(value):
+        return None
+    for scope in TOKEN_SCOPES:
+        if hmac.compare_digest(value, _load_scope_token(scope)):
+            return scope
+    return None
+
+
+def _resolve_credential(request, form_access_code="", form_token=""):
+    """Resolve who is calling. Returns ("console", None) for full access
+    (session cookie, Basic Auth, or the console password via any
+    channel), ("scope", scope) for a project token, or (None, None).
+    A project token is accepted as X-Access-Code, Authorization:
+    Bearer, ?token= / ?access_code=, or a form field access_code /
+    token (the endpoint passes its parsed form fields in). The console
+    password is accepted the same ways and always wins over a token
+    when both are present. Token files are re-read on every check, so
+    a regenerated token takes effect immediately (no restart)."""
+    # 1. Session cookie -> console.
+    if _session_ok(request.cookies.get(AUTH_COOKIE, "")):
+        return ("console", None)
+    # 2. Basic Auth -> console.
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Basic "):
+        try:
+            user, _, pw = base64.b64decode(auth[6:]).decode("utf-8").partition(":")
+        except Exception:
+            user, pw = "", ""
+        if user and pw and auth_store.verify_credentials(user, pw):
+            return ("console", None)
+    # 3. X-Access-Code header: console password -> console; token -> scope.
+    code = request.headers.get("X-Access-Code", "")
+    if code:
+        if auth_store.verify_password(code):
+            return ("console", None)
+        scope = _match_scope_token(code)
+        if scope:
+            return ("scope", scope)
+    # 4. Authorization: Bearer <token> (or Bearer <console password>).
+    if auth.startswith("Bearer "):
+        b = auth[7:].strip()
+        if b:
+            scope = _match_scope_token(b)
+            if scope:
+                return ("scope", scope)
+            if auth_store.verify_password(b):
+                return ("console", None)
+    # 5. Query params token / access_code.
+    for key in ("token", "access_code"):
+        v = request.query_params.get(key, "")
+        if v:
+            if auth_store.verify_password(v):
+                return ("console", None)
+            scope = _match_scope_token(v)
+            if scope:
+                return ("scope", scope)
+    # 6. Form fields access_code / token (passed in by the endpoint).
+    for v in (form_access_code, form_token):
+        if v:
+            if auth_store.verify_password(v):
+                return ("console", None)
+            scope = _match_scope_token(v)
+            if scope:
+                return ("scope", scope)
+    return (None, None)
+
+
+def _scope_token_url(scope):
+    return f"{_TOKEN_BASE_URL}/t/{scope}/{_load_scope_token(scope)}/"
+
+
+def _public_job(j):
+    """Job dict for the token API: status/progress/instructions only.
+    The internal `result` (output paths) is stripped."""
+    d = dict(j)
+    d.pop("result", None)
+    return d
+
+
+_SCOPE_INSTRUCTIONS = {
+    "asr": """<p>这是 <b>语音转文字 (ASR)</b> 项目的订阅链接：<b>这个链接就是凭证</b>，拿着它就能提交任务、查进度、下载结果，不用登录。只能用这个项目的类型（asr / asr_batch），不能碰别的项目，也不能管后台。</p>
+<h2>怎么提交任务（用这个链接的 token）</h2>
+<pre>curl -H "X-Access-Code: __TOKEN__" -F "file=@录音.m4a" -F "type=asr" https://cp.zin7.de/api/jobs
+curl -H "X-Access-Code: __TOKEN__" -F "file=@a.m4a" -F "file=@b.m4a" -F "type=asr_batch" https://cp.zin7.de/api/jobs
+curl -H "X-Access-Code: __TOKEN__" -F "file=@录音.m4a" -F "type=asr" -F 'params={"model":"accurate"}' https://cp.zin7.de/api/jobs</pre>
+<p>token 还可以这样传：<code>Authorization: Bearer __TOKEN__</code>、网址后面加 <code>?token=__TOKEN__</code>、或者表单里加 <code>-F "access_code=__TOKEN__"</code>。默认 Qwen3-ASR 0.6B，45 秒分片；<code>{"model":"accurate"}</code> 用 1.7B 更准。asr_batch 一次传多个文件，串行处理，结果一个 zip：每个文件一个子目录 + INDEX.csv + batch.txt（全部文本合集）。</p>
+<h2>怎么查进度 / 下结果</h2>
+<p>这个页面每 3 秒自动刷新，任务列表里“下载”那一列可以直接点。也可以用这个链接的 API（不用登录）：<code>GET /t/__SCOPE__/__TOKEN__/api/jobs</code> 看最近任务，<code>GET /t/__SCOPE__/__TOKEN__/api/jobs/&lt;任务ID&gt;</code> 看单个任务。下载：<code>curl https://cp.zin7.de/t/__SCOPE__/__TOKEN__/api/jobs/&lt;任务ID&gt;/download -o 结果.zip</code>，或者主接口 <code>curl -H "X-Access-Code: __TOKEN__" https://cp.zin7.de/api/jobs/&lt;任务ID&gt;/download -o 结果.zip</code>。</p>
+<p>重任务一次只跑一个；失败自动重试 2 次，第 3 次失败进死信。</p>""",
+    "video_transcode": """<p>这是 <b>视频转码</b> 项目的订阅链接：<b>这个链接就是凭证</b>，拿着它就能提交任务、查进度、下载结果，不用登录。只能用这个项目的类型（video_transcode），不能碰别的项目，也不能管后台。</p>
+<h2>怎么提交任务（用这个链接的 token）</h2>
+<pre>curl -H "X-Access-Code: __TOKEN__" -F "file=@视频.mp4" -F "type=video_transcode" https://cp.zin7.de/api/jobs</pre>
+<p>token 还可以这样传：<code>Authorization: Bearer __TOKEN__</code>、网址后面加 <code>?token=__TOKEN__</code>、或者表单里加 <code>-F "access_code=__TOKEN__"</code>。默认 1080p，源视频更小就按原分辨率，绝不放大；HEVC 编码。可调参数（params JSON）：<code>{"scale":"720p"}</code>（1080p / 720p / 480p / original）、<code>{"vcodec":"h264"}</code>（hevc / h264）、<code>{"fps":30}</code>。</p>
+<h2>怎么查进度 / 下结果</h2>
+<p>这个页面每 3 秒自动刷新，任务列表里“下载”那一列可以直接点。也可以用这个链接的 API（不用登录）：<code>GET /t/__SCOPE__/__TOKEN__/api/jobs</code>，单个任务 <code>GET /t/__SCOPE__/__TOKEN__/api/jobs/&lt;任务ID&gt;</code>。下载：<code>curl https://cp.zin7.de/t/__SCOPE__/__TOKEN__/api/jobs/&lt;任务ID&gt;/download -o 结果.zip</code>，或者主接口 <code>curl -H "X-Access-Code: __TOKEN__" https://cp.zin7.de/api/jobs/&lt;任务ID&gt;/download -o 结果.zip</code>。视频成品只保留 3 天，记得及时下载。</p>""",
+    "ocr": """<p>这是 <b>OCR 图片转文字</b> 项目的订阅链接：<b>这个链接就是凭证</b>，拿着它就能提交任务、查进度、下载结果，不用登录。只能用这个项目的类型（ocr），不能碰别的项目，也不能管后台。</p>
+<h2>怎么提交任务（用这个链接的 token）</h2>
+<pre>curl -H "X-Access-Code: __TOKEN__" -F "file=@图片.png" -F "type=ocr" https://cp.zin7.de/api/jobs</pre>
+<p>token 还可以这样传：<code>Authorization: Bearer __TOKEN__</code>、网址后面加 <code>?token=__TOKEN__</code>、或者表单里加 <code>-F "access_code=__TOKEN__"</code>。RapidOCR，中英文。可调参数（params JSON）：<code>{"mode":"fast"}</code>（fast=RapidOCR；vl=PaddleOCR-VL；long=长文档）、<code>{"lang":"ch_en"}</code>、<code>{"format":"txt"}</code>（txt / json）。</p>
+<h2>怎么查进度 / 下结果</h2>
+<p>这个页面每 3 秒自动刷新，任务列表里“下载”那一列可以直接点。也可以用这个链接的 API（不用登录）：<code>GET /t/__SCOPE__/__TOKEN__/api/jobs</code>，单个任务 <code>GET /t/__SCOPE__/__TOKEN__/api/jobs/&lt;任务ID&gt;</code>。下载：<code>curl https://cp.zin7.de/t/__SCOPE__/__TOKEN__/api/jobs/&lt;任务ID&gt;/download -o 结果.zip</code>，或者主接口 <code>curl -H "X-Access-Code: __TOKEN__" https://cp.zin7.de/api/jobs/&lt;任务ID&gt;/download -o 结果.zip</code>。</p>""",
+}
+
+TOKEN_PAGE_HTML = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mac-compute · __LABEL__</title><style>body{font-family:sans-serif;max-width:900px;margin:2em auto;padding:0 1em}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:6px;text-align:left}
+progress{width:120px}code{background:#f0f0f0;padding:1px 4px}pre{background:#f6f6f6;padding:10px;overflow:auto}
+.note{color:#888;font-size:14px}</style></head><body>
+<h1>mac-compute · __LABEL__</h1>
+<p>__DESC__ · 订阅链接就是凭证：拿着这个链接就能提交这个项目的任务、查进度、下载结果，不用登录；不能碰别的项目，也不能管后台。</p>
+__INSTR__
+<h2>任务 <span id="updated" style="font-size:13px;color:#888;font-weight:normal"></span></h2>
+<p><button onclick="load()">刷新</button> <span class="note">每 3 秒自动刷新，只显示这个项目的任务。已完成的任务点“下载”拿结果。</span></p>
+<table><tr><th>ID</th><th>类型</th><th>文件</th><th>状态</th><th>进度</th><th>信息</th><th>创建时间</th><th>开始</th><th>完成</th><th>下载</th></tr><tbody id="tb"></tbody></table>
+<script>
+const API='/t/__SCOPE__/__TOKEN__/api/jobs';
+function fmt(ts){if(!ts)return '';let d=new Date(ts*1000);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');}
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+async function load(){let r;try{r=await fetch(API);}catch(e){document.getElementById('tb').innerHTML='<tr><td colspan="10">读取失败：网络错误</td></tr>';return;}
+if(!r.ok){document.getElementById('tb').innerHTML='<tr><td colspan="10">读取失败：'+r.status+'</td></tr>';return;}
+let j=await r.json();
+document.getElementById('tb').innerHTML=j.length?j.map(x=>`<tr><td>${esc(x.id)}</td><td>${esc(x.type)}</td><td>${esc(x.filename)}</td><td>${esc(x.status)}</td><td><progress value="${x.progress}" max="1"></progress> ${Math.round(x.progress*100)}%</td><td>${esc(x.message||'')}${esc(x.error?' '+x.error:'')}</td><td>${fmt(x.created_at)}</td><td>${fmt(x.started_at)}</td><td>${fmt(x.finished_at)}</td><td>${x.status==='done'?`<a href="${API}/${encodeURIComponent(x.id)}/download">下载</a>`:''}</td></tr>`).join(''):'<tr><td colspan="10">暂无任务</td></tr>';
+document.getElementById('updated').textContent='（更新于 '+new Date().toLocaleTimeString()+'）';}
+setInterval(load,3000);load();
+</script></body></html>"""
+
+
+@app.get("/t/{scope}/{token}/", response_class=HTMLResponse)
+def token_page(scope: str, token: str):
+    _check_scope_token(scope, token)
+    info = TOKEN_SCOPES[scope]
+    html = TOKEN_PAGE_HTML.replace("__INSTR__", _SCOPE_INSTRUCTIONS[scope])
+    html = (html.replace("__SCOPE__", scope).replace("__TOKEN__", token)
+            .replace("__LABEL__", info["label"]).replace("__DESC__", info["desc"]))
+    return html
+
+
+@app.get("/t/{scope}/{token}/api/jobs")
+def token_list_jobs(scope: str, token: str):
+    _check_scope_token(scope, token)
+    return [_public_job(j) for j in
+            jobstore.list_jobs_by_types(TOKEN_SCOPES[scope]["types"], limit=50)]
+
+
+@app.get("/t/{scope}/{token}/api/jobs/{job_id}")
+def token_get_job(scope: str, token: str, job_id: str):
+    _check_scope_token(scope, token)
+    j = jobstore.get_job(job_id)
+    if not j or j["type"] not in TOKEN_SCOPES[scope]["types"]:
+        raise HTTPException(404, "job not found")
+    return _public_job(j)
+
+
+def _job_result_response(job_id):
+    """Build the FileResponse for a done job's result zip (the zip is
+    created on first download). The caller must already have checked
+    the job is done and its output is present. FileResponse supports
+    Range requests, so downloads are resumable."""
+    out_dir = OUTPUT_DIR / job_id
+    zip_path = out_dir / "result.zip"
+    if not zip_path.exists():
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
+            for p in sorted(out_dir.rglob("*")):
+                if p.is_file() and p.name != "result.zip":
+                    z.write(p, p.relative_to(out_dir))
+    return FileResponse(zip_path, filename=f"{job_id}.zip")
+
+
+@app.get("/t/{scope}/{token}/api/jobs/{job_id}/download")
+def token_download_job(scope: str, token: str, job_id: str):
+    """Download a done job's result with the project token (no login).
+    Same zip as the main download endpoint; scoped to the token's
+    job types (a job of another project -> 404)."""
+    _check_scope_token(scope, token)
+    j = jobstore.get_job(job_id)
+    if not j or j["type"] not in TOKEN_SCOPES[scope]["types"]:
+        raise HTTPException(404, "result not ready")
+    if j["status"] != "done":
+        raise HTTPException(404, "result not ready")
+    if j.get("output_deleted"):
+        raise HTTPException(410, "输出文件已被清理（保留期过后自动删除，或磁盘紧张时被清理），请重新提交任务")
+    return _job_result_response(job_id)
+
+
+@app.get("/api/token-links")
+def token_links(request: Request):
+    """Login-gated: the three per-project token links for the owner to
+    copy. The token value only ever appears here, behind the login."""
+    _require_auth(request)
+    return {"links": [
+        {"scope": scope, "label": info["label"], "desc": info["desc"],
+         "types": list(info["types"]), "url": _scope_token_url(scope)}
+        for scope, info in TOKEN_SCOPES.items()]}
+
+
+@app.post("/api/token-links/{scope}/regenerate")
+def token_regenerate(scope: str, request: Request):
+    """Login-gated: regenerate one scope's token. The old token stops
+    working immediately (the check re-reads the file every time)."""
+    _require_auth(request)
+    if scope not in TOKEN_SCOPES:
+        raise HTTPException(404, "unknown scope")
+    tok = secrets.token_hex(16)
+    p = _scope_token_path(scope)
+    p.write_text(tok)
+    os.chmod(p, 0o600)
+    return {"ok": True, "scope": scope, "url": _scope_token_url(scope)}
 
 
 SETUP_HTML = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
@@ -188,6 +488,20 @@ curl -u 用户名:密码 https://cp.zin7.de:5850/api/jobs/&lt;任务ID&gt;/downl
 <p>登录方式：浏览器在首页输用户名和密码；命令行用 <code>-u 用户名:密码</code>（HTTP Basic Auth），或者继续用 <code>-H "X-Access-Code: 密码"</code>（header 里放的是新密码，不是旧密码）。第一次使用先在浏览器里打开首页创建用户名和密码。</p>
 <p>登录方式：浏览器在首页输用户名和密码；命令行用 <code>-u 用户名:密码</code>（HTTP Basic Auth），或者继续用 <code>-H "X-Access-Code: 密码"</code>（header 里放的是新密码，不是旧密码）。第一次使用先在浏览器里打开首页创建用户名和密码。</p>
 <p>访问地址：<code>https://cp.zin7.de:5850</code>（IPv6），Tailscale 内也可以用 <code>https://zindemac-mini.tail35e420.ts.net:5850</code>（打开会报证书名字不符，因为证书是给 cp.zin7.de 发的）。</p>
+
+<h2>订阅链接（token 链接）</h2>
+<p>每个项目一个订阅链接：打开就能看这个项目的任务、进度和调用说明，不用登录。把链接发给别人，对方拿着这个链接就能提交这个项目的任务、查进度、下载结果（token 就是凭证），但不能碰别的项目，也不能管后台（重新生成、看全部任务这些还是要登录）。链接里的 token 别公开贴出去；想换就点“重新生成”，旧链接立刻失效。导航页（cpl.zin7.de）的 mac-compute 详情页里也有这三个链接。</p>
+<div id="tokenLinks">正在读取……</div>
+<script>
+async function loadTokenLinks(){
+  let r=await fetch('/api/token-links');if(r.status===401){location.href='/';return;}
+  let j=await r.json();
+  document.getElementById('tokenLinks').innerHTML=j.links.map(l=>`<p><b>${l.label}</b>（${l.desc}）<br><code>${l.url}</code> <button onclick="copyTokenLink('${l.url}',this)">复制</button> <button onclick="regenToken('${l.scope}',this)">重新生成</button></p>`).join('');
+}
+async function copyTokenLink(url,btn){try{await navigator.clipboard.writeText(url);btn.textContent='已复制';setTimeout(()=>btn.textContent='复制',1500);}catch(e){prompt('复制这个链接：',url);}}
+async function regenToken(scope,btn){if(!confirm('重新生成这个项目的订阅链接？旧链接会立刻失效。'))return;let r=await fetch('/api/token-links/'+scope+'/regenerate',{method:'POST'});let j=await r.json();if(!r.ok){alert('重新生成失败：'+(j.detail||JSON.stringify(j)));return;}loadTokenLinks();}
+loadTokenLinks();
+</script>
 
 <h2>系统占用 <span id="now" style="font-size:14px;font-weight:normal"></span></h2>
 <p>每分钟采一次，保留 30 天。灰色竖条是任务运行的时间段。<span id="ranges">
@@ -704,10 +1018,23 @@ def _prune_loop():
 @app.post("/api/jobs")
 async def create_job(request: Request, type: str = Form(...),
                      params: str = Form("{}"),
-                     file: list[UploadFile] = File(default=[])):
-    _require_auth(request)
+                     file: list[UploadFile] = File(default=[]),
+                     access_code: str = Form(""),
+                     token: str = Form("")):
+    # A project token is a valid credential here: X-Access-Code,
+    # Bearer, ?token= / ?access_code=, or a form field access_code /
+    # token. Console password grants all types; a scope token only
+    # its own project's types (wrong type -> 403).
+    kind, scope = _resolve_credential(request, access_code, token)
+    if kind is None:
+        raise _unauth_error()
     if type not in JOB_TYPES:
         raise HTTPException(400, f"unknown type {type}, use one of {JOB_TYPES}")
+    if kind == "scope" and type not in TOKEN_SCOPES[scope]["types"]:
+        raise HTTPException(
+            403,
+            f"project token '{scope}' cannot submit type '{type}' "
+            f"(allowed: {', '.join(TOKEN_SCOPES[scope]['types'])})")
     try:
         p = json.loads(params or "{}")
         if not isinstance(p, dict):
@@ -742,14 +1069,26 @@ async def create_job(request: Request, type: str = Form(...),
 
 @app.get("/api/jobs")
 def list_jobs(request: Request):
-    _require_auth(request)
+    kind, scope = _resolve_credential(request)
+    if kind is None:
+        raise _unauth_error()
+    if kind == "scope":
+        # A project token only ever sees its own project's jobs.
+        return [_public_job(j) for j in jobstore.list_jobs_by_types(
+            TOKEN_SCOPES[scope]["types"], limit=50)]
     return jobstore.list_jobs()
 
 
 @app.get("/api/jobs/{job_id}")
 def get_job(job_id: str, request: Request):
-    _require_auth(request)
+    kind, scope = _resolve_credential(request)
+    if kind is None:
+        raise _unauth_error()
     j = jobstore.get_job(job_id)
+    if kind == "scope":
+        if not j or j["type"] not in TOKEN_SCOPES[scope]["types"]:
+            raise HTTPException(404, "job not found")
+        return _public_job(j)
     if not j:
         raise HTTPException(404, "job not found")
     return j
@@ -802,20 +1141,17 @@ async def prune_jobs(request: Request):
 
 @app.get("/api/jobs/{job_id}/download")
 def download(job_id: str, request: Request):
-    _require_auth(request)
+    kind, scope = _resolve_credential(request)
+    if kind is None:
+        raise _unauth_error()
     j = jobstore.get_job(job_id)
+    if kind == "scope" and (not j or j["type"] not in TOKEN_SCOPES[scope]["types"]):
+        raise HTTPException(404, "result not ready")
     if not j or j["status"] != "done":
         raise HTTPException(404, "result not ready")
     if j.get("output_deleted"):
         raise HTTPException(410, "输出文件已被清理（保留期过后自动删除，或磁盘紧张时被清理），请重新提交任务")
-    out_dir = OUTPUT_DIR / job_id
-    zip_path = out_dir / "result.zip"
-    if not zip_path.exists():
-        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
-            for p in sorted(out_dir.rglob("*")):
-                if p.is_file() and p.name != "result.zip":
-                    z.write(p, p.relative_to(out_dir))
-    return FileResponse(zip_path, filename=f"{job_id}.zip")
+    return _job_result_response(job_id)
 
 
 @app.post("/api/jobs/{job_id}/cancel")
