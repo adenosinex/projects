@@ -16,6 +16,10 @@ Sessions: random token in an HttpOnly (+Secure over HTTPS) SameSite=Lax
 Endpoints:
   GET  /          dashboard (auth; no creds -> /setup, else -> /login)
   GET  /api/data  JSON snapshot from data.json (auth)
+  GET  /api/mac   live Mac system stats (auth)
+  GET  /router    full router dashboard (auth)
+  GET  /mac       Mac detail page (auth)
+  GET  /dns       DNS/AdGuard detail page (auth)
   GET  /login     login form
   POST /login     verify via auth_store.verify_credentials
   GET  /setup     setup form (only when no credentials exist)
@@ -24,6 +28,11 @@ Endpoints:
   GET  /health    public {"status":"ok"}
 """
 import html
+import time
+import subprocess
+import shutil
+import re
+import concurrent.futures
 import json
 import os
 import secrets
@@ -111,7 +120,7 @@ DASHBOARD_HTML = """<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Router Status</title><style>__CSS__</style></head><body>
 <header><h1>家庭网络状态 &mdash; Redmi RM2100</h1>
-<span><button id="unit-toggle" class="unitbtn" type="button">单位：Mbps</button>
+<span><a href="/">\u2190 总览</a> <button id="unit-toggle" class="unitbtn" type="button">单位：Mbps</button>
 <a href="/logout">Logout</a></span></header>
 <main>
 <div class="banner" id="stale-banner"></div>
@@ -338,6 +347,410 @@ loop();
 """.replace("__CSS__", PAGE_CSS)
 
 
+
+OVERVIEW_HTML = """<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>家庭网络状态</title><style>__CSS__</style></head><body>
+<header><h1>家庭网络状态</h1>
+<span><a href="/logout">Logout</a></span></header>
+<main>
+<div class="banner" id="stale-banner"></div>
+<p class="meta"><span id="meta-time">加载中&hellip;</span> <span id="meta-age"></span></p>
+<h2>Mac <span style="font-size:14px;font-weight:400"><a href="/mac/">详情 &rarr;</a></span></h2>
+<div class="cards">
+<div class="card"><div class="v" id="mac-load">&ndash;</div><div class="l">负载 (1/5/15 分钟)</div></div>
+<div class="card"><div class="v" id="mac-mem">&ndash;</div><div class="l">内存占用</div></div>
+<div class="card"><div class="v" id="mac-disk">&ndash;</div><div class="l">磁盘占用</div></div>
+<div class="card"><div class="v" id="mac-uptime">&ndash;</div><div class="l">运行时间</div></div>
+<div class="card"><div class="v" id="mac-services">&ndash;</div><div class="l">服务在线</div></div>
+</div>
+<h2>家庭网络 <span style="font-size:14px;font-weight:400"><a href="/router/">详情 &rarr;</a></span></h2>
+<div class="cards">
+<div class="card"><div class="v" id="wan-down">&ndash;</div><div class="l">WAN 下载</div></div>
+<div class="card"><div class="v" id="wan-up">&ndash;</div><div class="l">WAN 上传</div></div>
+<div class="card"><div class="v" id="wan-state">&ndash;</div><div class="l">WAN 状态</div></div>
+<div class="card"><div class="v" id="wan-ip">&ndash;</div><div class="l">WAN IPv4</div></div>
+<div class="card"><div class="v" id="devcount">&ndash;</div><div class="l">在线设备</div></div>
+</div>
+<h2>DNS <span style="font-size:14px;font-weight:400"><a href="/dns/">详情 &rarr;</a></span></h2>
+<div class="cards">
+<div class="card"><div class="v" id="dns-queries">&ndash;</div><div class="l">24h 查询</div></div>
+<div class="card"><div class="v" id="dns-blocked">&ndash;</div><div class="l">24h 拦截</div></div>
+<div class="card"><div class="v" id="dns-rate">&ndash;</div><div class="l">拦截率</div></div>
+<div class="card"><div class="v" id="dns-top">&ndash;</div><div class="l">查询最多设备</div></div>
+</div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const num=v=>(typeof v==='number'&&isFinite(v))?v:null;
+const fmtBytes=b=>{if(b==null)return'–';const u=['B','KB','MB','GB','TB'];let i=0;while(b>=1024&&i<u.length-1){b/=1024;i++}return b.toFixed(1)+' '+u[i]};
+let rateUnit=localStorage.getItem('rs-rate-unit')||'mbps';
+function fmtRate(mbps){
+  const v=num(mbps); if(v==null) return '–';
+  if(rateUnit==='mbs'){ const m=v/8; if(m>=1) return m.toFixed(2)+' MB/s'; return (m*1024).toFixed(m>=0.01?0:1)+' KB/s'; }
+  if(v>=1) return v.toFixed(2)+' Mbps';
+  return (v*1000).toFixed(v>=0.01?0:1)+' Kbps';
+}
+let lastData=null, lastMac=null;
+function renderRouter(d){
+  lastData=d;
+  if(!d.ok){ $('meta-time').textContent='采集器暂无实时数据'+(d.error?'：'+d.error:''); return; }
+  $('meta-time').textContent='更新于 '+(d.updated_at||'');
+  const w=d.wan||{};
+  $('wan-down').textContent=fmtRate(w.rx_mbps);
+  $('wan-up').textContent=fmtRate(w.tx_mbps);
+  $('wan-state').textContent=w.up?'UP':'DOWN';
+  $('wan-state').style.color=w.up?'#4ade80':'#f87171';
+  $('wan-ip').textContent=w.ip?(w.ip+(w.prefix!=null?'/'+w.prefix:'')):'–';
+  const devs=d.devices||[];
+  const online=devs.filter(x=>x.online).length;
+  $('devcount').textContent=online+' / '+devs.length;
+  const ag=d.adguard||{};
+  $('dns-queries').textContent=ag.total_queries_24h==null?'–':ag.total_queries_24h;
+  $('dns-blocked').textContent=ag.total_blocked_24h==null?'–':ag.total_blocked_24h;
+  if(ag.total_queries_24h&&ag.total_blocked_24h!=null){
+    $('dns-rate').textContent=(ag.total_blocked_24h/ag.total_queries_24h*100).toFixed(1)+'%';
+  } else $('dns-rate').textContent='–';
+  const withQ=devs.filter(x=>x.dns_queries!=null).sort((a,b)=>b.dns_queries-a.dns_queries);
+  $('dns-top').textContent=withQ.length?withQ[0].name+'（'+withQ[0].dns_queries+'）':'–';
+}
+function renderMac(m){
+  lastMac=m;
+  if(!m.ok) return;
+  const l=m.load||{};
+  $('mac-load').textContent=[l.load1,l.load5,l.load15].map(v=>v==null?'–':v.toFixed(2)).join(' / ');
+  const mem=m.mem||{};
+  $('mac-mem').textContent=mem.used_pct==null?'–':mem.used_pct+'%（'+(mem.used_gb==null?'–':mem.used_gb+' / '+mem.total_gb+' GB')+'）';
+  const dk=m.disk||{};
+  $('mac-disk').textContent=dk.used_pct==null?'–':dk.used_pct+'%（'+(dk.used_gb==null?'–':dk.used_gb+' / '+dk.total_gb+' GB')+'）';
+  $('mac-uptime').textContent=m.uptime||'–';
+  $('mac-services').textContent=(m.services_up==null?'–':m.services_up+' / '+m.services_total);
+}
+function tickAge(){
+  const t=lastData||lastMac;
+  if(!t||!t.updated_at_epoch) return;
+  const age=Math.max(0,Math.round(Date.now()/1000-t.updated_at_epoch));
+  $('meta-age').textContent='（'+age+' 秒前）';
+  const b=$('stale-banner');
+  if(age>30){ b.style.display='block'; b.textContent='⚠️ 数据已超过 30 秒未更新（'+age+' 秒前），请检查采集器是否在运行。'; }
+  else b.style.display='none';
+}
+let timer=null;
+async function refresh(){
+  try{
+    const [r1,r2]=await Promise.all([
+      fetch('/api/data',{signal:AbortSignal.timeout(4000)}),
+      fetch('/api/mac',{signal:AbortSignal.timeout(4000)})]);
+    if(r1.ok) renderRouter(await r1.json());
+    if(r2.ok) renderMac(await r2.json());
+    if(!r1.ok&&!r2.ok) $('meta-time').textContent='请求失败：HTTP '+r1.status+' / '+r2.status;
+  }catch(e){ $('meta-time').textContent='拉取失败：'+e; }
+}
+async function loop(){ if(!document.hidden) await refresh(); timer=setTimeout(loop,5000); }
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden){ clearTimeout(timer); loop(); } });
+setInterval(tickAge,1000);
+loop();
+</script></body></html>
+""".replace("__CSS__", PAGE_CSS)
+
+
+MAC_HTML = """<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mac 状态</title><style>__CSS__</style></head><body>
+<header><h1>Mac 状态</h1>
+<span><a href="/">&larr; 总览</a> <a href="/logout">Logout</a></span></header>
+<main>
+<div class="banner" id="stale-banner"></div>
+<p class="meta"><span id="meta-time">加载中&hellip;</span> <span id="meta-age"></span></p>
+<h2>系统</h2>
+<div class="cards">
+<div class="card"><div class="v" id="cpu">&ndash;</div><div class="l">CPU</div></div>
+<div class="card"><div class="v" id="load">&ndash;</div><div class="l">负载 (1/5/15 分钟)</div></div>
+<div class="card"><div class="v" id="mem">&ndash;</div><div class="l">内存</div></div>
+<div class="card"><div class="v" id="disk">&ndash;</div><div class="l">磁盘</div></div>
+<div class="card"><div class="v" id="uptime">&ndash;</div><div class="l">运行时间</div></div>
+</div>
+<h2>服务 (<span id="svccount">0</span>)</h2>
+<table><thead><tr><th>服务</th><th>端口</th><th>状态</th></tr></thead>
+<tbody id="services"></tbody></table>
+<p class="meta">服务状态为本机端口连通性检查（TCP），不是各服务的健康接口。</p>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const num=v=>(typeof v==='number'&&isFinite(v))?v:null;
+let lastMac=null;
+function syncRows(tbody,items,keyFn,cellsFn,decorate){
+  const byKey={};
+  for(const tr of tbody.children) byKey[tr.dataset.key]=tr;
+  const seen=new Set();
+  for(const it of items){
+    const k=keyFn(it); seen.add(k);
+    let tr=byKey[k];
+    if(!tr){ tr=document.createElement('tr'); tr.dataset.key=k; }
+    const cells=cellsFn(it);
+    while(tr.children.length<cells.length) tr.appendChild(document.createElement('td'));
+    while(tr.children.length>cells.length) tr.removeChild(tr.lastChild);
+    cells.forEach((v,i)=>{ const td=tr.children[i]; const s=String(v); if(td.textContent!==s) td.textContent=s; });
+    if(decorate) decorate(tr,it);
+    tbody.appendChild(tr);
+  }
+  for(const k of Object.keys(byKey)) if(!seen.has(k)) byKey[k].remove();
+}
+function render(m){
+  lastMac=m;
+  if(!m.ok){ $('meta-time').textContent='Mac 数据暂不可用'; return; }
+  $('meta-time').textContent='更新于 '+(m.updated_at||'');
+  const c=m.cpu||{};
+  $('cpu').textContent=(c.model||'–')+(c.cores?'（'+c.cores+' 核）':'');
+  const l=m.load||{};
+  $('load').textContent=[l.load1,l.load5,l.load15].map(v=>v==null?'–':v.toFixed(2)).join(' / ');
+  const mem=m.mem||{};
+  $('mem').textContent=mem.used_pct==null?'–':mem.used_pct+'%（'+mem.used_gb+' / '+mem.total_gb+' GB，可用约 '+mem.free_gb+' GB，缓存 '+mem.inactive_gb+' GB）';
+  const dk=m.disk||{};
+  $('disk').textContent=dk.used_pct==null?'–':dk.used_pct+'%（'+dk.used_gb+' / '+dk.total_gb+' GB，剩余 '+dk.free_gb+' GB）';
+  $('uptime').textContent=m.uptime||'–';
+  const svcs=m.services||[];
+  $('svccount').textContent=(m.services_up==null?'':m.services_up+' / ')+svcs.length;
+  syncRows($('services'),svcs,x=>x.name,x=>[x.name,x.port,x.up?'在线':'离线'],
+    (tr,x)=>{ tr.children[2].style.color=x.up?'#4ade80':'#f87171'; });
+}
+function tickAge(){
+  if(!lastMac||!lastMac.updated_at_epoch) return;
+  const age=Math.max(0,Math.round(Date.now()/1000-lastMac.updated_at_epoch));
+  $('meta-age').textContent='（'+age+' 秒前）';
+  const b=$('stale-banner');
+  if(age>30){ b.style.display='block'; b.textContent='⚠️ 数据已超过 30 秒未更新（'+age+' 秒前）。'; }
+  else b.style.display='none';
+}
+let timer=null;
+async function refresh(){
+  try{
+    const r=await fetch('/api/mac',{signal:AbortSignal.timeout(5000)});
+    if(!r.ok){ $('meta-time').textContent='请求失败：HTTP '+r.status; return; }
+    render(await r.json());
+  }catch(e){ $('meta-time').textContent='拉取失败：'+e; }
+}
+async function loop(){ if(!document.hidden) await refresh(); timer=setTimeout(loop,5000); }
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden){ clearTimeout(timer); loop(); } });
+setInterval(tickAge,1000);
+loop();
+</script></body></html>
+""".replace("__CSS__", PAGE_CSS)
+
+
+DNS_HTML = """<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DNS 状态</title><style>__CSS__</style></head><body>
+<header><h1>DNS 状态 &mdash; AdGuard Home</h1>
+<span><a href="/">&larr; 总览</a> <a href="/logout">Logout</a></span></header>
+<main>
+<div class="banner" id="stale-banner"></div>
+<p class="meta"><span id="meta-time">加载中&hellip;</span> <span id="meta-age"></span></p>
+<h2>24 小时总计</h2>
+<div class="cards">
+<div class="card"><div class="v" id="dns-queries">&ndash;</div><div class="l">查询</div></div>
+<div class="card"><div class="v" id="dns-blocked">&ndash;</div><div class="l">拦截</div></div>
+<div class="card"><div class="v" id="dns-rate">&ndash;</div><div class="l">拦截率</div></div>
+</div>
+<h2>各设备</h2>
+<table><thead><tr><th>设备</th><th>IP</th><th>查询</th><th>拦截</th></tr></thead>
+<tbody id="clients"></tbody></table>
+<p class="meta" id="dns-note"></p>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const num=v=>(typeof v==='number'&&isFinite(v))?v:null;
+let lastData=null;
+function syncRows(tbody,items,keyFn,cellsFn,decorate){
+  const byKey={};
+  for(const tr of tbody.children) byKey[tr.dataset.key]=tr;
+  const seen=new Set();
+  for(const it of items){
+    const k=keyFn(it); seen.add(k);
+    let tr=byKey[k];
+    if(!tr){ tr=document.createElement('tr'); tr.dataset.key=k; }
+    const cells=cellsFn(it);
+    while(tr.children.length<cells.length) tr.appendChild(document.createElement('td'));
+    while(tr.children.length>cells.length) tr.removeChild(tr.lastChild);
+    cells.forEach((v,i)=>{ const td=tr.children[i]; const s=String(v); if(td.textContent!==s) td.textContent=s; });
+    if(decorate) decorate(tr,it);
+    tbody.appendChild(tr);
+  }
+  for(const k of Object.keys(byKey)) if(!seen.has(k)) byKey[k].remove();
+}
+function render(d){
+  lastData=d;
+  if(!d.ok){ $('meta-time').textContent='采集器暂无实时数据'+(d.error?'：'+d.error:''); return; }
+  $('meta-time').textContent='更新于 '+(d.updated_at||'');
+  const ag=d.adguard||{};
+  $('dns-queries').textContent=ag.total_queries_24h==null?'–':ag.total_queries_24h;
+  $('dns-blocked').textContent=ag.total_blocked_24h==null?'–':ag.total_blocked_24h;
+  if(ag.total_queries_24h&&ag.total_blocked_24h!=null){
+    $('dns-rate').textContent=(ag.total_blocked_24h/ag.total_queries_24h*100).toFixed(1)+'%';
+  } else $('dns-rate').textContent='–';
+  const devs=(d.devices||[]).filter(x=>x.dns_queries!=null||x.dns_blocked!=null)
+    .sort((a,b)=>(b.dns_queries||0)-(a.dns_queries||0));
+  syncRows($('clients'),devs,x=>x.mac,x=>[
+    x.name, x.ip,
+    x.dns_queries==null?'–':String(x.dns_queries),
+    x.dns_blocked==null?'–':String(x.dns_blocked)]);
+  $('dns-note').textContent=ag.ok
+    ?('每设备“查询 / 拦截”为'+(ag.blocked_window||'最近日志')+'内统计；24h 总计来自 AdGuard 控制台。')
+    :('AdGuard 数据暂不可用'+(ag.error?'：'+ag.error:'')+'。');
+}
+function tickAge(){
+  if(!lastData||!lastData.updated_at_epoch) return;
+  const age=Math.max(0,Math.round(Date.now()/1000-lastData.updated_at_epoch));
+  $('meta-age').textContent='（'+age+' 秒前）';
+  const b=$('stale-banner');
+  if(age>30){ b.style.display='block'; b.textContent='⚠️ 数据已超过 30 秒未更新（'+age+' 秒前），请检查采集器是否在运行。'; }
+  else b.style.display='none';
+}
+let timer=null;
+async function refresh(){
+  try{
+    const r=await fetch('/api/data',{signal:AbortSignal.timeout(4000)});
+    if(!r.ok){ $('meta-time').textContent='请求失败：HTTP '+r.status; return; }
+    render(await r.json());
+  }catch(e){ $('meta-time').textContent='拉取失败：'+e; }
+}
+async function loop(){ if(!document.hidden) await refresh(); timer=setTimeout(loop,5000); }
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden){ clearTimeout(timer); loop(); } });
+setInterval(tickAge,1000);
+loop();
+</script></body></html>
+""".replace("__CSS__", PAGE_CSS)
+
+
+MAC_SERVICES = [
+    ("mac-compute", 5850),
+    ("\u5bfc\u822a cpl", 18936),
+    ("sub-convert", 18937),
+    ("proxy-test", 18935),
+    ("ping-test", 18938),
+    ("dji-compress", 18940),
+    ("traffic-monitor", 18941),
+    ("\u77e5\u4e4e\u63d0\u53d6", 18948),
+    ("AdGuard", 3003),
+    ("\u72b6\u6001\u9875", 18933),
+]
+
+
+def _fmt_uptime(sec):
+    sec = int(sec)
+    d, rem = divmod(sec, 86400)
+    h, rem = divmod(rem, 3600)
+    m, _ = divmod(rem, 60)
+    if d:
+        return f"{d}\u5929 {h}\u5c0f\u65f6"
+    if h:
+        return f"{h}\u5c0f\u65f6 {m}\u5206\u949f"
+    return f"{m}\u5206\u949f"
+
+
+def _run(cmd):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True,
+                              timeout=5).stdout
+    except Exception:
+        return ""
+
+
+def _check_port(port, timeout=0.5):
+    try:
+        s = socket.socket()
+        s.settimeout(timeout)
+        s.connect(("127.0.0.1", port))
+        s.close()
+        return True
+    except Exception:
+        return False
+
+
+def get_mac_stats():
+    """Live Mac system stats (stdlib only). Called by /api/mac."""
+    now = time.time()
+    out = {"ok": True, "updated_at_epoch": int(now),
+           "updated_at": time.strftime("%Y-%m-%d %H:%M:%S",
+                                       time.localtime(now))}
+    model = _run(["sysctl", "-n", "machdep.cpu.brand_string"]).strip()
+    cores = os.cpu_count() or 0
+    try:
+        load = os.getloadavg()
+    except Exception:
+        load = (None, None, None)
+    out["cpu"] = {"model": model or "\u2014", "cores": cores}
+    out["load"] = {"load1": load[0], "load5": load[1], "load15": load[2]}
+    # Memory via vm_stat + hw.memsize.
+    mem = {"total_gb": None, "used_gb": None, "used_pct": None,
+           "free_gb": None, "inactive_gb": None}
+    total_b = None
+    try:
+        total_b = int(_run(["sysctl", "-n", "hw.memsize"]).strip())
+    except Exception:
+        pass
+    vm = _run(["vm_stat"])
+    page = 16384
+    m = re.search(r"page size of (\d+) bytes", vm)
+    if m:
+        page = int(m.group(1))
+    pages = {}
+    for key in ("free", "active", "inactive", "speculative",
+                "wired down", "purgeable"):
+        mm = re.search(r"Pages " + re.escape(key) + r":\s+(\d+)", vm)
+        if mm:
+            pages[key] = int(mm.group(1))
+    if total_b and pages:
+        used_b = (pages.get("wired down", 0) + pages.get("active", 0)
+                  + pages.get("speculative", 0)) * page
+        free_b = pages.get("free", 0) * page
+        inact_b = pages.get("inactive", 0) * page
+        mem["total_gb"] = round(total_b / (1024 ** 3), 1)
+        mem["used_gb"] = round(used_b / (1024 ** 3), 1)
+        mem["used_pct"] = round(used_b / total_b * 100)
+        mem["free_gb"] = round(free_b / (1024 ** 3), 2)
+        mem["inactive_gb"] = round(inact_b / (1024 ** 3), 1)
+    out["mem"] = mem
+    # Disk.
+    try:
+        du = shutil.disk_usage("/")
+        out["disk"] = {
+            "total_gb": round(du.total / (1024 ** 3), 1),
+            "used_gb": round(du.used / (1024 ** 3), 1),
+            "free_gb": round(du.free / (1024 ** 3), 1),
+            "used_pct": round(du.used / du.total * 100),
+        }
+    except Exception:
+        out["disk"] = {"total_gb": None, "used_gb": None,
+                       "free_gb": None, "used_pct": None}
+    # Uptime via kern.boottime.
+    up_sec = None
+    bt = _run(["sysctl", "-n", "kern.boottime"])
+    m = re.search(r"sec = (\d+)", bt)
+    if m:
+        up_sec = int(now) - int(m.group(1))
+    out["uptime_sec"] = up_sec
+    out["uptime"] = _fmt_uptime(up_sec) if up_sec is not None else "\u2014"
+    # Services (parallel TCP connect).
+    services = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+        futs = {ex.submit(_check_port, port): (name, port)
+                for name, port in MAC_SERVICES}
+        for fut in concurrent.futures.as_completed(futs):
+            name, port = futs[fut]
+            try:
+                up = fut.result()
+            except Exception:
+                up = False
+            services.append({"name": name, "port": port, "up": up})
+    order = {name: i for i, (name, _p) in enumerate(MAC_SERVICES)}
+    services.sort(key=lambda s: order.get(s["name"], 99))
+    out["services"] = services
+    out["services_up"] = sum(1 for s in services if s["up"])
+    out["services_total"] = len(services)
+    return out
+
+
 def form_page(title, action, fields, error=None, note=None):
     err = f'<p class="err">{html.escape(error)}</p>' if error else ""
     note_html = f'<p class="meta">{note}</p>' if note else ""
@@ -412,7 +825,23 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/":
             if self.require_login() is None:
                 return
+            self.send_html(200, OVERVIEW_HTML)
+        elif path in ("/router", "/router/"):
+            if self.require_login() is None:
+                return
             self.send_html(200, DASHBOARD_HTML)
+        elif path == "/api/mac":
+            if self.require_login() is None:
+                return
+            self.send_json(200, get_mac_stats())
+        elif path in ("/mac", "/mac/"):
+            if self.require_login() is None:
+                return
+            self.send_html(200, MAC_HTML)
+        elif path in ("/dns", "/dns/"):
+            if self.require_login() is None:
+                return
+            self.send_html(200, DNS_HTML)
         elif path == "/api/data":
             if self.require_login() is None:
                 return

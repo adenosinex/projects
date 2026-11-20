@@ -30,9 +30,21 @@ logging.basicConfig(
 log = logging.getLogger("sub-convert-hourly")
 
 
+# Auto-test policy (2026-11-18, user): only the self-hosted 'vps' sub
+# (debi/shoc) is tested on schedule. Third-party airports (vyy, 渔云,
+# nc, planb, 多出口聚合) are MANUAL-ONLY -- test them from the web UI.
+AUTO_TEST_SUB_IDS = {"419387b4d5dc"}  # vps
+
+
 def main():
+    # Daytime only (2026-11-18, user): speed tests run 08:00-23:00 only.
+    import datetime as _dt
+    _h = _dt.datetime.now().hour
+    if _h < 8 or _h >= 23:
+        log.info("hourly: outside 08:00-23:00 (hour=%d), skip", _h)
+        return 0
     store.init()
-    subs = store.list_subs()
+    subs = [m for m in store.list_subs() if m["id"] in AUTO_TEST_SUB_IDS]
     if not subs:
         log.info("hourly: no subscriptions, nothing to do")
         return 0

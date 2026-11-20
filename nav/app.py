@@ -69,6 +69,8 @@ SERVICES = [
     ("DJI 视频压缩", "/dji/", "DJI 视频压缩：HEVC 硬件加速，上传或指定 Mac 上的路径"),
     ("路况监测", "/traffic/", "指定路段/路线拥堵监测：实时状态、今日曲线、历史与热力图"),
     ("知乎提取", "/zhihu/", "知乎文章/回答提取 + YouTube/Bilibili 视频转文字"),
+    ("zipview 压缩包图片浏览", "/zipview/", "压缩包里的图片浏览：按文件夹分组，按需取图，不解压"),
+    ("抖音视频流", "/douyin/", "上下滑动的短视频流：电脑上的视频，浏览器直接播"),
 ]
 
 # mac-compute per-project token links (same scopes as mac-compute's
@@ -171,6 +173,19 @@ def _ping_token():
     return None
 
 
+def _dji_token():
+    """Current dji-compress token (read at render time, so a
+    regeneration updates the nav link automatically)."""
+    try:
+        with open("/Users/zin/dji-compress/token") as f:
+            tok = f.read().strip()
+        if len(tok) == 32 and all(c in "0123456789abcdef" for c in tok):
+            return tok
+    except Exception:
+        pass
+    return None
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     if not current_user(request):
@@ -223,6 +238,18 @@ def service_detail(name: str, request: Request):
         body = ('<h2>订阅链接（token 链接）</h2>'
                 '<p>把链接发给别人，对方打开就能看这个项目的任务和进度，不用登录。链接里的 token 就是凭证，别公开贴出去；想换 token，去控制台的“订阅链接”里点“重新生成”。</p>'
                 + "".join(cards))
+    elif n == "DJI 视频压缩":
+        tok = _dji_token()
+        if tok:
+            link = "https://cpl.zin7.de/djit/%s/" % tok
+            body = ('<h2>订阅链接（token 链接）</h2>'
+                    '<p>把链接发给别人，对方打开就能用这个压缩工具，不用登录。链接里的 token 就是凭证，别公开贴出去；想换 token，删掉 Mac 上 /Users/zin/dji-compress/token 后重启服务，会自动生成新的。</p>'
+                    '<div class="card"><b>DJI 视频压缩</b><p>上传视频或指定 Mac 上的路径，HEVC 硬件加速压缩</p>'
+                    '<code>%s</code>'
+                    '<button onclick="copyLink(\'%s\',this)">复制</button></div>'
+                    % (link, link))
+        else:
+            body = '<p>还没有生成这个服务的订阅链接：先打开一次 /dji/（会自动生成）。</p>'
     else:
         body = '<p>这个服务还没有订阅链接。</p>'
     html = (SERVICE_DETAIL_HTML.replace("__NAME__", n)

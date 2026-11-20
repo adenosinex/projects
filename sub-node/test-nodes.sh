@@ -3,6 +3,12 @@
 # 做三件事：① 记下各节点延迟与当前选中节点；② 订阅端点失效时自动切到另一条；
 # ③ 检查 AnyTLS 监听是否还在。结果写进 logs/test.log。
 set -u
+# Daytime only (2026-11-18, user): node tests run 08:00-23:00 only.
+_HOUR=$(date +%H)
+if [ "$_HOUR" -lt 8 ] || [ "$_HOUR" -ge 23 ]; then
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] outside 08:00-23:00 (hour=$_HOUR), skip" >> "$HOME/sub-node/logs/test.log"
+  exit 0
+fi
 DIR="$HOME/sub-node"
 SECRET="$(cat "$DIR/controller.secret" 2>/dev/null || echo "")"
 LOG="$DIR/logs/test.log"

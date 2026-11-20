@@ -451,59 +451,22 @@ button{margin-top:16px;padding:8px 18px}</style></head><body>
 <p style="color:#888">用户名或密码不对会回到这里。不要把密码发给别人。</p>
 </body></html>"""
 
-CONSOLE_HTML = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
+CONSOLE_HTML = """
+<!doctype html><html lang="zh"><head><meta charset="utf-8">
 <title>mac-compute</title><style>body{font-family:sans-serif;max-width:900px;margin:2em auto;padding:0 1em}
 table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:6px;text-align:left}
-progress{width:120px}code{background:#f0f0f0;padding:1px 4px}pre{background:#f6f6f6;padding:10px;overflow:auto}</style></head><body>
+progress{width:120px}code{background:#f0f0f0;padding:1px 4px}pre{background:#f6f6f6;padding:10px;overflow:auto}
+details{border:1px solid #ddd;border-radius:8px;padding:10px 14px;margin:12px 0}
+summary{font-size:17px;font-weight:700;cursor:pointer}
+summary .sub{font-size:13px;color:#888;font-weight:400}
+.tok{word-break:break-all}
+h2{margin-top:1.5em}</style></head><body>
 <h1>mac-compute · Mac mini M4</h1>
-<p>所有算力都在 Mac 上，客户端只上传 / 看进度 / 下载结果。<a href="/logout">退出登录</a></p>
-<p><a href="/github">GitHub 上传</a>：把代码推到 GitHub 仓库。先在那页填账号和 token，保存后在聊天里告诉 Muse，Muse 会执行推送并开启自动推送。</p>
+<p>所有算力都在 Mac 上，客户端只上传 / 看进度 / 下载结果。<a href="/logout">退出登录</a> · <a href="/github">GitHub 上传</a></p>
+<p style="color:#888">点开一个项目，看它的订阅链接、调用方法和任务记录。每个项目有自己的订阅链接（token），拿着链接不用登录就能提交这个项目的任务、查进度、下载结果。</p>
 
-<h2>怎么用</h2>
-<ol>
-<li><b>选类型、传文件、提交。</b>只传必要的文件就行，参数都有默认值，不想调就不用填。</li>
-<li><b>等进度条走完。</b>重任务（转写、转码）一次只跑一个，轻任务最多 4 个并行；下一个任务可以提前上传，不用等上一个跑完。</li>
-<li><b>点“下载”拿结果。</b>结果是一个 zip，里面是处理好的文件和报告。视频转码的成品只保留 3 天，记得及时下载。</li>
-</ol>
-<p>任务失败会自动重试 2 次，第 3 次失败会进死信，不会卡住后面的任务，死信可以点“重试”。进行中的任务可以点“取消”。</p>
-
-<h2>任务类型和默认值</h2>
-<table><tr><th>类型</th><th>做什么</th><th>默认值</th></tr>
-<tr><td>asr</td><td>音频 / 视频转文字</td><td>Qwen3-ASR 0.6B，45 秒分片；想更准传 <code>{"model":"accurate"}</code></td></tr>
-<tr><td>asr_batch</td><td>多个音频 / 视频一次转完</td><td>一次传多个文件，串行处理，一个模型跑完全批；坏文件只记失败不卡整批，结果一个 zip：每个文件一个子目录 + INDEX.csv + batch.txt（全部文本合集）</td></tr>
-<tr><td>video_transcode</td><td>视频转码 / 压缩</td><td>默认 1080p，源视频更小就按原分辨率，绝不放大；HEVC</td></tr>
-<tr><td>video_thumbs</td><td>从视频里抽帧选优</td><td>每秒 1 帧，留 Top 10</td></tr>
-<tr><td>image_select</td><td>多张截图选优（传 zip）</td><td>留 Top 10，糊的丢掉，重复的只留最好那张</td></tr>
-<tr><td>image_batch</td><td>图片批量压缩 / 转换</td><td>JPG 85，长边 1920，重复图跳过</td></tr>
-<tr><td>ocr</td><td>图片 / PDF 转文字</td><td>RapidOCR，中英文</td></tr>
-<tr><td>data_csv</td><td>CSV 清洗去重</td><td>去重、去空行</td></tr>
-<tr><td>vps_probe</td><td>测国外 VPS 在国内的直连访问（延迟 / 速度），不走代理</td><td>不用传文件；传 <code>{"target":"https://..."}</code>；默认 ping 4 次、超时 10 秒、下载 10MB；IPv6 延迟用 TCP 测（本机 ping6 已坏）；结果在任务 JSON 里，也有 probe.json 可下载</td></tr>
-</table>
-
-<h2>命令行也可以用</h2>
-<pre>curl -u 用户名:密码 -F "file=@视频.mp4" -F "type=video_transcode" https://cp.zin7.de:5850/api/jobs
-curl -H "X-Access-Code: 密码" -F "file=@截图.zip" -F "type=image_select" -F 'params={"top_n":10}' https://cp.zin7.de:5850/api/jobs
-curl -u 用户名:密码 -F "file=@a.m4a" -F "file=@b.m4a" -F "file=@c.m4a" -F "type=asr_batch" https://cp.zin7.de:5850/api/jobs
-curl -u 用户名:密码 https://cp.zin7.de:5850/api/jobs/&lt;任务ID&gt;/download -o 结果.zip</pre>
-<p>登录方式：浏览器在首页输用户名和密码；命令行用 <code>-u 用户名:密码</code>（HTTP Basic Auth），或者继续用 <code>-H "X-Access-Code: 密码"</code>（header 里放的是新密码，不是旧密码）。第一次使用先在浏览器里打开首页创建用户名和密码。</p>
-<p>登录方式：浏览器在首页输用户名和密码；命令行用 <code>-u 用户名:密码</code>（HTTP Basic Auth），或者继续用 <code>-H "X-Access-Code: 密码"</code>（header 里放的是新密码，不是旧密码）。第一次使用先在浏览器里打开首页创建用户名和密码。</p>
-<p>访问地址：<code>https://cp.zin7.de:5850</code>（IPv6），Tailscale 内也可以用 <code>https://zindemac-mini.tail35e420.ts.net:5850</code>（打开会报证书名字不符，因为证书是给 cp.zin7.de 发的）。</p>
-
-<h2>订阅链接（token 链接）</h2>
-<p>每个项目一个订阅链接：打开就能看这个项目的任务、进度和调用说明，不用登录。把链接发给别人，对方拿着这个链接就能提交这个项目的任务、查进度、下载结果（token 就是凭证），但不能碰别的项目，也不能管后台（重新生成、看全部任务这些还是要登录）。链接里的 token 别公开贴出去；想换就点“重新生成”，旧链接立刻失效。导航页（cpl.zin7.de）的 mac-compute 详情页里也有这三个链接。</p>
-<div id="tokenLinks">正在读取……</div>
-<script>
-async function loadTokenLinks(){
-  let r=await fetch('/api/token-links');if(r.status===401){location.href='/';return;}
-  let j=await r.json();
-  document.getElementById('tokenLinks').innerHTML=j.links.map(l=>`<p><b>${l.label}</b>（${l.desc}）<br><code>${l.url}</code> <button onclick="copyTokenLink('${l.url}',this)">复制</button> <button onclick="regenToken('${l.scope}',this)">重新生成</button></p>`).join('');
-}
-async function copyTokenLink(url,btn){try{await navigator.clipboard.writeText(url);btn.textContent='已复制';setTimeout(()=>btn.textContent='复制',1500);}catch(e){prompt('复制这个链接：',url);}}
-async function regenToken(scope,btn){if(!confirm('重新生成这个项目的订阅链接？旧链接会立刻失效。'))return;let r=await fetch('/api/token-links/'+scope+'/regenerate',{method:'POST'});let j=await r.json();if(!r.ok){alert('重新生成失败：'+(j.detail||JSON.stringify(j)));return;}loadTokenLinks();}
-loadTokenLinks();
-</script>
-
-<h2>系统占用 <span id="now" style="font-size:14px;font-weight:normal"></span></h2>
+<details id="sysBox">
+<summary>系统占用 <span id="now" style="font-size:13px;color:#888;font-weight:normal"></span></summary>
 <p>每分钟采一次，保留 30 天。灰色竖条是任务运行的时间段。<span id="ranges">
 <button onclick="setMode('live')">实时</button>
 <button onclick="setMode('hist',0.25)">15分钟</button>
@@ -515,35 +478,143 @@ loadTokenLinks();
 <div>CPU % <canvas id="c_cpu" width="860" height="120" style="width:100%;height:120px;border:1px solid #ddd"></canvas></div>
 <div>内存 % <canvas id="c_mem" width="860" height="120" style="width:100%;height:120px;border:1px solid #ddd"></canvas></div>
 <div>磁盘 % <canvas id="c_disk" width="860" height="120" style="width:100%;height:120px;border:1px solid #ddd"></canvas></div>
+</details>
 
-<h2>提交任务</h2>
-<form id="f" enctype="multipart/form-data">
+<h2>项目</h2>
+
+<details class="proj" data-scope="asr" data-types="asr,asr_batch">
+<summary>语音转文字 (ASR) <span class="sub">音频 / 视频转文字</span></summary>
+<p><b>订阅链接</b><br><code class="tok" data-tok>正在读取……</code> <button data-copy>复制</button> <button data-regen>重新生成</button></p>
+<p><b>调用</b></p>
+<pre data-curl>正在读取订阅链接……</pre>
+<p>默认：Qwen3-ASR 0.6B，45 秒分片；想更准传 <code>{"model":"accurate"}</code>（1.7B）。一次传多个文件用 asr_batch，串行处理，结果一个 zip。</p>
+<form data-submit>
 <input type="file" name="file" multiple required>
+<select name="type"><option value="asr">asr 单个音频</option><option value="asr_batch">asr_batch 多个音频一次转完</option></select>
+<input name="params" placeholder='{"model":"accurate"}' size="20">
+<button>提交任务</button></form>
+<p data-msg></p>
+<table><tr><th>ID</th><th>类型</th><th>文件</th><th>状态</th><th>进度</th><th>信息</th><th>操作</th></tr><tbody data-tb></tbody></table>
+</details>
+
+<details class="proj" data-scope="video_transcode" data-types="video_transcode">
+<summary>视频转码 <span class="sub">视频转码 / 压缩</span></summary>
+<p><b>订阅链接</b><br><code class="tok" data-tok>正在读取……</code> <button data-copy>复制</button> <button data-regen>重新生成</button></p>
+<p><b>调用</b></p>
+<pre data-curl>正在读取订阅链接……</pre>
+<p>默认：1080p，源视频更小就按原分辨率，绝不放大；HEVC。成品只保留 3 天，记得及时下载。</p>
+<form data-submit>
+<input type="file" name="file" required>
+<input type="hidden" name="type" value="video_transcode">
+<input name="params" placeholder='{"max_height":720}' size="20">
+<button>提交任务</button></form>
+<p data-msg></p>
+<table><tr><th>ID</th><th>类型</th><th>文件</th><th>状态</th><th>进度</th><th>信息</th><th>操作</th></tr><tbody data-tb></tbody></table>
+</details>
+
+<details class="proj" data-scope="ocr" data-types="ocr">
+<summary>OCR 图片转文字 <span class="sub">图片 / PDF 转文字</span></summary>
+<p><b>订阅链接</b><br><code class="tok" data-tok>正在读取……</code> <button data-copy>复制</button> <button data-regen>重新生成</button></p>
+<p><b>调用</b></p>
+<pre data-curl>正在读取订阅链接……</pre>
+<p>默认：RapidOCR，中英文。</p>
+<form data-submit>
+<input type="file" name="file" required>
+<input type="hidden" name="type" value="ocr">
+<input name="params" placeholder='{}' size="20">
+<button>提交任务</button></form>
+<p data-msg></p>
+<table><tr><th>ID</th><th>类型</th><th>文件</th><th>状态</th><th>进度</th><th>信息</th><th>操作</th></tr><tbody data-tb></tbody></table>
+</details>
+
+<details class="proj" data-scope="" data-types="video_thumbs,image_select,image_batch,face_cluster,data_csv,novel_index,vps_probe">
+<summary>其他 <span class="sub">没有订阅链接，只能登录后在这里提交</span></summary>
+<p>这几个类型没有订阅链接，只能登录后在这里提交。</p>
+<p><b>调用</b>（用控制台密码）</p>
+<pre>curl -u 用户名:密码 -F "file=@截图.zip" -F "type=image_select" -F 'params={"top_n":10}' https://cp.zin7.de/api/jobs
+curl -u 用户名:密码 -F "file=@视频.mp4" -F "type=video_thumbs" https://cp.zin7.de/api/jobs
+curl -u 用户名:密码 -F 'params={"target":"https://..."}' -F "type=vps_probe" https://cp.zin7.de/api/jobs</pre>
+<p>类型：video_thumbs 从视频抽帧选优（每秒 1 帧，留 Top 10）；image_select 多张截图选优（传 zip，留 Top 10）；image_batch 图片批量压缩（JPG 85，长边 1920）；data_csv CSV 清洗去重；vps_probe 测 VPS 直连（不用传文件）；face_cluster / novel_index 按默认跑。</p>
+<form data-submit>
+<input type="file" name="file" multiple>
 <select name="type">
-<option value="asr">asr 音频转文字 (Qwen3-ASR)</option>
-<option value="asr_batch">asr_batch 多个音频一次转完 (选多个文件)</option>
-<option value="video_transcode">video_transcode 视频转码 (默认1080p，小于原分辨率不放大)</option>
-<option value="video_thumbs">video_thumbs 视频截图选优</option>
+<option value="video_thumbs">video_thumbs 视频抽帧选优</option>
 <option value="image_select">image_select 多张截图选优</option>
 <option value="image_batch">image_batch 图片批量压缩</option>
-<option value="ocr">ocr 图片/PDF转文字 (RapidOCR)</option>
-<option value="data_csv">data_csv CSV清洗去重</option>
+<option value="data_csv">data_csv CSV 清洗去重</option>
+<option value="face_cluster">face_cluster 人脸聚类</option>
+<option value="novel_index">novel_index 小说索引</option>
+<option value="vps_probe">vps_probe 测 VPS 直连（不用传文件）</option>
 </select>
 <input name="params" placeholder='{"top_n":10}' size="20">
 <button>提交任务</button></form>
-<p id="msg"></p>
-<h2>任务</h2>
-<p><button onclick="pruneHist()">清理旧历史</button> <span id="pruneMsg"></span></p>
-<p style="color:#888">历史最多保留 1000 条 / 90 天，超出的每小时自动清理一次；“清理旧历史”是立即执行一次。删除任务会同时删掉它的输入和输出文件，删了就找不回来了。进行中或排队中的任务不能删。视频成品（video_transcode）完成 3 天后自动删除，只留任务记录；磁盘紧张时（data/ 超过 30 GB 或剩余空间不足 20 GB）优先清理视频成品，仍不足时按大小清理其他已完成任务的输出文件。</p>
-<table><tr><th>ID</th><th>类型</th><th>文件</th><th>状态</th><th>进度</th><th>信息</th><th>操作</th></tr><tbody id="tb"></tbody></table>
+<p data-msg></p>
+<table><tr><th>ID</th><th>类型</th><th>文件</th><th>状态</th><th>进度</th><th>信息</th><th>操作</th></tr><tbody data-tb></tbody></table>
+</details>
+
+<h2>历史管理</h2>
+<p><button onclick="pruneHist()">清理旧历史</button> <button onclick="clearAllHist()" style="color:#c00">清除全部历史</button> <span id="pruneMsg"></span></p>
+<p style="color:#888">历史最多保留 1000 条 / 90 天，超出的每小时自动清理一次；“清理旧历史”是立即执行一次。删除任务会同时删掉它的输入和输出文件，删了就找不回来了。进行中或排队中的任务不能删。视频成品（video_transcode）完成 3 天后自动删除，只留任务记录；磁盘紧张时（data/ 超过 30 GB 或剩余空间不足 20 GB）优先清理视频成品，仍不足时按大小清理其他已完成任务的输出文件。“清除全部历史”会删掉所有已完成/失败/已取消的任务（进行中或排队中的除外），需要点两次确认。</p>
+
 <script>
-async function load(){let r=await fetch('/api/jobs');if(r.status===401){location.href='/';return;}let j=await r.json();
-document.getElementById('tb').innerHTML=j.map(x=>`<tr><td>${x.id}</td><td>${x.type}</td><td>${x.filename}</td><td>${x.status}</td><td><progress value="${x.progress}" max="1"></progress> ${Math.round(x.progress*100)}%</td><td>${x.message||''} ${x.error||''}</td><td>${x.status==='done'?(x.output_deleted?'输出已清理':`<a href="/api/jobs/${x.id}/download">下载</a>`):''} ${['failed','dead'].includes(x.status)?`<button onclick="retry('${x.id}')">重试</button>`:''} ${['queued','running'].includes(x.status)?`<button onclick="cancel('${x.id}')">取消</button>`:''} ${['done','failed','dead','cancelled'].includes(x.status)?`<button onclick="delJob('${x.id}')">删除</button>`:''}</td></tr>`).join('');}
+function rowHtml(x){
+  return `<tr><td>${x.id}</td><td>${x.type}</td><td>${x.filename}</td><td>${x.status}</td><td><progress value="${x.progress}" max="1"></progress> ${Math.round(x.progress*100)}%</td><td>${x.message||''} ${x.error||''}</td><td>${x.status==='done'?(x.output_deleted?'输出已清理':`<a href="/api/jobs/${x.id}/download">下载</a>`):''} ${['failed','dead'].includes(x.status)?`<button onclick="retry('${x.id}')">重试</button>`:''} ${['queued','running'].includes(x.status)?`<button onclick="cancel('${x.id}')">取消</button>`:''} ${['done','failed','dead','cancelled'].includes(x.status)?`<button onclick="delJob('${x.id}')">删除</button>`:''}</td></tr>`;
+}
+async function load(){
+  for (let sec of document.querySelectorAll('.proj')){
+    let types = sec.dataset.types;
+    let r = await fetch('/api/jobs?type='+encodeURIComponent(types));
+    if (r.status===401){ location.href='/'; return; }
+    if (!r.ok) continue;
+    let j = await r.json();
+    sec.querySelector('[data-tb]').innerHTML = j.map(rowHtml).join('');
+  }
+}
 async function retry(id){await fetch(`/api/jobs/${id}/retry`,{method:'POST'});load();}
 async function cancel(id){await fetch(`/api/jobs/${id}/cancel`,{method:'POST'});load();}
 async function delJob(id){if(!confirm('删除这个任务？它的输入和输出文件也会一起删掉，删了就找不回来了。'))return;let r=await fetch('/api/jobs/'+id,{method:'DELETE'});let j=await r.json();if(!r.ok){alert('删除失败：'+(j.detail||JSON.stringify(j)));return;}load();}
 async function pruneHist(){if(!confirm('按保留规则清理旧历史（最多 1000 条 / 90 天；视频成品只保留 3 天）？超出的任务和它们的文件会被删掉。'))return;let r=await fetch('/api/jobs/prune',{method:'POST'});let j=await r.json();document.getElementById('pruneMsg').textContent=r.ok?('已清理 '+j.deleted_jobs+' 个任务，释放 '+(j.freed_bytes/1048576).toFixed(1)+' MB'+(j.video_outputs_removed?('，视频成品 '+j.video_outputs_removed+' 个'):'' )+(j.guard_triggered?('，磁盘保护清理 '+j.guard_removed_jobs+' 个'):'')):('清理失败：'+(j.detail||JSON.stringify(j)));load();}
-document.getElementById('f').onsubmit=async e=>{e.preventDefault();let r=await fetch('/api/jobs',{method:'POST',body:new FormData(e.target)});let j=await r.json();document.getElementById('msg').textContent=r.ok?('已提交 '+j.id):('失败 '+JSON.stringify(j));load();};
+async function clearAllHist(){if(!confirm('删除全部历史？所有已完成、失败、已取消的任务记录和它们的输入输出文件都会被删掉，删了就找不回来了。进行中或排队中的任务不会被删。'))return;if(!confirm('再确认一次：真的要清空全部历史吗？'))return;let r=await fetch('/api/jobs/clear-all',{method:'POST'});let j=await r.json();document.getElementById('pruneMsg').textContent=r.ok?('已清除 '+j.deleted_jobs+' 个任务，释放 '+(j.freed_bytes/1048576).toFixed(1)+' MB'+(j.active_jobs?('，还有 '+j.active_jobs+' 个进行中/排队中的任务未删除'):'')):('清除失败：'+(j.detail||JSON.stringify(j)));load();}
+async function loadTokenLinks(){
+  let r=await fetch('/api/token-links');if(r.status===401){location.href='/';return;}
+  let j=await r.json();
+  let byScope={}; j.links.forEach(l=>byScope[l.scope]=l);
+  for (let sec of document.querySelectorAll('.proj[data-scope]')){
+    let sc=sec.dataset.scope; if(!sc) continue;
+    let l=byScope[sc]; if(!l) continue;
+    sec.querySelector('[data-tok]').textContent=l.url;
+    let tok=l.url.split('/').filter(Boolean).pop();
+    let ex = sc==='asr' ? 'curl -H "X-Access-Code: '+tok+'" -F "file=@录音.m4a" -F "type=asr" https://cp.zin7.de/api/jobs'
+      : sc==='video_transcode' ? 'curl -H "X-Access-Code: '+tok+'" -F "file=@视频.mp4" -F "type=video_transcode" https://cp.zin7.de/api/jobs'
+      : 'curl -H "X-Access-Code: '+tok+'" -F "file=@图片.png" -F "type=ocr" https://cp.zin7.de/api/jobs';
+    sec.querySelector('[data-curl]').textContent=ex;
+  }
+}
+document.querySelectorAll('.proj[data-scope]').forEach(sec=>{
+  let sc=sec.dataset.scope; if(!sc) return;
+  sec.querySelector('[data-copy]').onclick=async e=>{
+    let url=sec.querySelector('[data-tok]').textContent;
+    try{await navigator.clipboard.writeText(url);e.target.textContent='已复制';setTimeout(()=>e.target.textContent='复制',1500);}catch(err){prompt('复制这个链接：',url);}
+  };
+  sec.querySelector('[data-regen]').onclick=async e=>{
+    if(!confirm('重新生成这个项目的订阅链接？旧链接会立刻失效。'))return;
+    let r=await fetch('/api/token-links/'+sc+'/regenerate',{method:'POST'});
+    let j=await r.json();if(!r.ok){alert('重新生成失败：'+(j.detail||JSON.stringify(j)));return;}
+    loadTokenLinks();
+  };
+});
+document.querySelectorAll('form[data-submit]').forEach(f=>{
+  f.onsubmit=async e=>{
+    e.preventDefault();
+    let sec=f.closest('.proj');
+    let msg=sec.querySelector('[data-msg]');
+    let r=await fetch('/api/jobs',{method:'POST',body:new FormData(f)});
+    let j=await r.json();
+    msg.textContent=r.ok?('已提交 '+j.id):('失败 '+JSON.stringify(j));
+    load();
+  };
+});
+loadTokenLinks();
 setInterval(load,3000);load();
 let curHours=24, mode='hist', liveTimer=null;
 function setMode(m,h){
@@ -562,17 +633,14 @@ async function loadLive(){
 function drawChart(id,pts,key,jobs,t0,t1){
   let cv=document.getElementById(id),ctx=cv.getContext('2d'),W=cv.width,H=cv.height;
   ctx.clearRect(0,0,W,H);
-  // job run bands
   ctx.fillStyle='rgba(0,0,0,0.07)';
   (jobs||[]).forEach(j=>{let x0=(Math.max(j.started_at,t0)-t0)/(t1-t0)*W,x1=((j.finished_at||t1)-t0)/(t1-t0)*W;if(x1>0&&x0<W)ctx.fillRect(Math.max(x0,0),0,Math.min(x1,W)-Math.max(x0,0),H);});
-  // gridlines 0/50/100%
   ctx.strokeStyle='#eee';ctx.fillStyle='#888';ctx.font='10px sans-serif';
   [0,50,100].forEach(v=>{let y=H-4-(v/100)*(H-14);ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();ctx.fillText(v+'%',2,y-2);});
   if(!pts.length){ctx.fillText('暂无数据，等一分钟采样',10,H/2);return;}
   ctx.strokeStyle='#2563eb';ctx.lineWidth=1.5;ctx.beginPath();
   pts.forEach((p,i)=>{let x=(p.ts-t0)/(t1-t0)*W,y=H-4-(p[key]/100)*(H-14);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});
   ctx.stroke();
-  // time labels
   let fmt=t=>{let d=new Date(t*1000);return String(d.getMonth()+1)+'/'+d.getDate()+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');};
   ctx.fillText(fmt(t0),4,H-2);let w=ctx.measureText(fmt(t1)).width;ctx.fillText(fmt(t1),W-w-2,H-2);
 }
@@ -586,7 +654,8 @@ async function loadStats(h){
   drawChart('c_disk',pts,'disk',d.jobs,t0,t1);
 }
 loadStats(24);setInterval(()=>{if(mode==='hist')loadStats();},60000);
-</script></body></html>"""
+</script></body></html>
+"""
 
 
 GITHUB_HTML = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
@@ -1068,7 +1137,7 @@ async def create_job(request: Request, type: str = Form(...),
 
 
 @app.get("/api/jobs")
-def list_jobs(request: Request):
+def list_jobs(request: Request, type: str = ""):
     kind, scope = _resolve_credential(request)
     if kind is None:
         raise _unauth_error()
@@ -1076,6 +1145,15 @@ def list_jobs(request: Request):
         # A project token only ever sees its own project's jobs.
         return [_public_job(j) for j in jobstore.list_jobs_by_types(
             TOKEN_SCOPES[scope]["types"], limit=50)]
+    if type:
+        # Console: optionally filter to one project's types, e.g.
+        # ?type=asr,asr_batch. Unknown types are ignored; if none
+        # are valid the result is empty.
+        types = tuple(t for t in (x.strip() for x in type.split(","))
+                      if t in JOB_TYPES)
+        if types:
+            return jobstore.list_jobs_by_types(types, limit=50)
+        return []
     return jobstore.list_jobs()
 
 
@@ -1137,6 +1215,21 @@ async def prune_jobs(request: Request):
             or max_jobs < 0 or max_age_days < 0):
         raise HTTPException(400, "max_jobs and max_age_days must be integers >= 0")
     return _run_prune(max_jobs, max_age_days)
+
+
+@app.post("/api/jobs/clear-all")
+async def clear_all_jobs(request: Request):
+    """Delete ALL terminal history at once (console-only). Same
+    retention machinery as /api/jobs/prune, but with max_jobs=0 so
+    every finished/failed/cancelled job is removed, together with its
+    input and output files. Queued/running jobs are never touched
+    (enforced in jobstore.prune_history); the response reports how
+    many are still active. Also cleans orphaned files, applies the
+    video-output retention and the disk guard, like prune."""
+    _require_auth(request)
+    res = _run_prune(0, None)
+    res["active_jobs"] = jobstore.count_jobs()
+    return res
 
 
 @app.get("/api/jobs/{job_id}/download")

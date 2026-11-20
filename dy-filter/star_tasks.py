@@ -4,7 +4,9 @@ star_tasks.py — 云端归档结算、批量清理与 Aria2 自动下载队列�
 =========================================================================
 核心流程（点击「结算归档并下载 (3%)」或调用 /dy/api/cloud/commit 时后台异步执行）：
   1. 云端集中：将 status='starred' (score=5) 的精选视频按原目录相对路径
-     (rel_path) 在 TARGET_CID 下创建对应子目录并调用 client.fs_move 移动集中。
+     (rel_path)，在 TARGET_CID 下新建一个日期文件夹（如 2026-11-18）存放，
+     再在该文件夹内按相对路径创建对应子目录并调用 client.fs_move 移动集中；
+     不直接全部放到 TARGET_CID 根目录。
   2. 云端清理：将 status='rejected' (score=1) 的淘汰视频按每批 500 个调用
      client.fs_delete 批量删除（进 115 回收站兜底）。
   3. 本地落盘：获取精选视频原画直链 + 请求头，按原目录相对路径推入本地
@@ -584,12 +586,18 @@ def _run_cloud_move(ctx: TaskContext) -> int:
         ctx.log('没有需要云端移动的精选视频。')
         return 0
 
+    # 每次移动新建一个日期文件夹存放，不直接全部放到 /精选集中营 根目录
+    batch_folder = dt.datetime.now().strftime('%Y-%m-%d')
+
     if ctx.dry_run:
         ctx.add(move_candidates=len(starred))
-        ctx.log(f'[预览] 将移动 {len(starred)} 个精选视频到 {cfg["target_cid"]}（保持相对路径: {preserve}）')
+        ctx.log(f'[预览] 将移动 {len(starred)} 个精选视频到 {cfg["target_cid"]}/{batch_folder}（保持相对路径: {preserve}）')
         return len(starred)
 
     target_root_cid = p115_manager.resolve_cid(cfg['target_cid'], create_if_missing=True)
+    batch_root_cid = p115_manager.ensure_cloud_rel_dir(target_root_cid, batch_folder)
+    ctx.log(f'本次移动新建文件夹：{cfg["target_cid"]}/{batch_folder}（CID={batch_root_cid}）')
+    ctx.update(dest_folder=f'{cfg["target_cid"]}/{batch_folder}', dest_folder_cid=str(batch_root_cid))
     client = p115_manager.get_client()
 
     # 按相对子目录分组，保持原目录相对路径结构
@@ -601,7 +609,7 @@ def _run_cloud_move(ctx: TaskContext) -> int:
     moved_total = 0
     for rdir, videos in groups.items():
         ctx.check()
-        dest_cid = p115_manager.ensure_cloud_rel_dir(target_root_cid, rdir) if rdir else target_root_cid
+        dest_cid = p115_manager.ensure_cloud_rel_dir(batch_root_cid, rdir) if rdir else batch_root_cid
         fids = [v.file_id for v in videos]
         for i in range(0, len(fids), 500):
             ctx.check()
@@ -618,7 +626,7 @@ def _run_cloud_move(ctx: TaskContext) -> int:
                 session.commit()
             moved_total += len(chunk_fids)
             ctx.add(cloud_moved=len(chunk_fids))
-            ctx.log(f'已云端集中 {len(chunk_fids)} 个视频 -> /{rdir or "根目录"} (CID={dest_cid})')
+            ctx.log(f'已云端集中 {len(chunk_fids)} 个视频 -> {batch_folder}/{rdir or "根目录"} (CID={dest_cid})')
             for v in videos[i:i + 500]:
                 ctx.advance(v.rel_path or v.filename)
             time.sleep(0.3)

@@ -121,7 +121,7 @@ BAD_STREAK = 2            # consecutive bad probes before a node counts bad
 PROBE_BYTES = 5_000_000   # capped probe download (5MB, not the full 10MB)
 PROBE_TIMEOUT = 15        # seconds for the probe download
 CFDL = "https://speed.cloudflare.com/__down?bytes=%d" % PROBE_BYTES
-PROBE_INTERVAL_S = 300    # LaunchAgent StartInterval (5 min)
+PROBE_INTERVAL_S = 900    # LaunchAgent StartInterval (15 min) -- traffic cap 100GB/mo
 
 # Dedicated mihomo worker ports for the watchdog. No overlap with the
 # full test (17910-17919 / 19110-19119) or proxy-test (17900-17909).
@@ -696,6 +696,12 @@ def run_round(sub_id, force_bad=None, dry_run=False):
 
 
 def main(argv=None):
+    # Daytime only (2026-11-18, user): probes run 08:00-23:00 only.
+    import datetime as _dt
+    _h = _dt.datetime.now().hour
+    if _h < 8 or _h >= 23:
+        print(f"watchdog: outside 08:00-23:00 (hour={_h}), skip")
+        return 0
     ap = argparse.ArgumentParser(description="featured-node watchdog")
     ap.add_argument("--sub", default="",
                     help="run a round for one subscription only "

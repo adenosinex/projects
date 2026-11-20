@@ -1,36 +1,99 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>proxy-test · 订阅测速</title>
 <style>
+  :root {
+    --bg: #ffffff; --text: #222; --muted: #666;
+    --card: #f9f9f9; --border: #ddd; --th-bg: #f6f6f6;
+    --accent: #1a73e8; --accent-hover: #1557b0;
+    --ok: #0a7d1e; --warn: #b26a00; --bad: #c00; --skip: #888;
+    --bar-bg: #eee; --row-hover: #f2f7ff; --best-bg: #e8f5e9;
+    --btn-bg: #f2f2f2; --btn-border: #888;
+  }
+  [data-theme="dark"] {
+    --bg: #1a1a1a; --text: #e0e0e0; --muted: #999;
+    --card: #242424; --border: #3a3a3a; --th-bg: #2a2a2a;
+    --accent: #5b9cf6; --accent-hover: #7db3f8;
+    --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; --skip: #888;
+    --bar-bg: #333; --row-hover: #2a3340; --best-bg: #1e3a24;
+    --btn-bg: #2a2a2a; --btn-border: #555;
+  }
+  * { box-sizing: border-box; }
   body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-         max-width: 1100px; margin: 0 auto; padding: 16px; color: #222; }
-  h1 { font-size: 22px; } h2 { font-size: 17px; margin-top: 28px;
-         border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+         max-width: 1100px; margin: 0 auto; padding: 16px;
+         color: var(--text); background: var(--bg); }
+  h1 { font-size: 22px; display: inline; }
+  h2 { font-size: 17px; margin-top: 28px;
+       border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+  h3 { font-size: 15px; margin: 16px 0 8px; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; }
+  .theme-btn { background: var(--btn-bg); color: var(--text);
+    border: 1px solid var(--btn-border); border-radius: 6px;
+    padding: 6px 12px; cursor: pointer; font-size: 13px; }
   .tabs button { padding: 8px 18px; margin-right: 6px; cursor: pointer;
-    border: 1px solid #888; background: #f2f2f2; border-radius: 6px; }
-  .tabs button.active { background: #222; color: #fff; }
-  input[type=text], select { padding: 7px; font-size: 14px; }
-  button { padding: 7px 14px; font-size: 14px; cursor: pointer; }
-  button.primary { background: #1a73e8; color: #fff; border: none;
+    border: 1px solid var(--btn-border); background: var(--btn-bg);
+    color: var(--text); border-radius: 6px; }
+  .tabs button.active { background: var(--text); color: var(--bg); }
+  input[type=text], select { padding: 7px; font-size: 14px;
+    background: var(--bg); color: var(--text); border: 1px solid var(--border);
+    border-radius: 4px; }
+  input[type=number] { padding: 7px; font-size: 14px; background: var(--bg);
+    color: var(--text); border: 1px solid var(--border); border-radius: 4px; }
+  button { padding: 7px 14px; font-size: 14px; cursor: pointer;
+    background: var(--btn-bg); color: var(--text);
+    border: 1px solid var(--btn-border); border-radius: 6px; }
+  button.primary { background: var(--accent); color: #fff; border: none;
     border-radius: 6px; padding: 9px 20px; }
+  button.primary:hover { background: var(--accent-hover); }
   button:disabled { opacity: .5; cursor: default; }
+  .table-wrap { overflow-x: auto; }
   table { border-collapse: collapse; width: 100%; font-size: 13px; }
-  th, td { border: 1px solid #ddd; padding: 5px 7px; text-align: left; }
-  th { background: #f6f6f6; }
-  .ok { color: #0a7d1e; } .bad { color: #c00; } .skip { color: #888; }
-  .card { background: #f9f9f9; border: 1px solid #e3e3e3; border-radius: 8px;
+  th, td { border: 1px solid var(--border); padding: 5px 7px; text-align: left; }
+  th { background: var(--th-bg); white-space: nowrap; }
+  th.sortable { cursor: pointer; user-select: none; }
+  th.sortable:hover { background: var(--row-hover); }
+  th.sortable::after { content: " ↕"; color: var(--muted); font-size: 11px; }
+  th.sort-asc::after { content: " ↑"; color: var(--accent); }
+  th.sort-desc::after { content: " ↓"; color: var(--accent); }
+  tbody tr:hover { background: var(--row-hover); }
+  tr.best-row { background: var(--best-bg); }
+  .ok { color: var(--ok); } .bad { color: var(--bad); } .skip { color: var(--skip); }
+  .warn { color: var(--warn); }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px;
     padding: 12px; margin: 10px 0; }
-  .muted { color: #666; font-size: 13px; }
+  .muted { color: var(--muted); font-size: 13px; }
   #progress { font-size: 14px; }
-  .bar { height: 10px; background: #eee; border-radius: 5px; overflow: hidden; }
-  .bar > div { height: 100%; background: #1a73e8; width: 0%; }
+  .bar { height: 10px; background: var(--bar-bg); border-radius: 5px; overflow: hidden; }
+  .bar > div { height: 100%; background: var(--accent); width: 0%; }
+  .speed-bar { height: 4px; background: var(--bar-bg); border-radius: 2px;
+    margin-top: 3px; overflow: hidden; min-width: 60px; }
+  .speed-bar > div { height: 100%; border-radius: 2px; }
+  .stats { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0; }
+  .stat { background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 14px; min-width: 90px; }
+  .stat .num { font-size: 20px; font-weight: 700; }
+  .stat .lbl { font-size: 12px; color: var(--muted); }
+  .filterbar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+    margin: 10px 0; }
+  .filterbar button { padding: 5px 12px; font-size: 13px; }
+  .filterbar button.active { background: var(--text); color: var(--bg); }
+  .filterbar input[type=text] { margin-left: auto; width: 200px; }
+  @media (max-width: 640px) {
+    body { padding: 10px; }
+    .filterbar input[type=text] { margin-left: 0; width: 100%; }
+    .stat { min-width: 70px; padding: 8px 10px; }
+    .stat .num { font-size: 17px; }
+  }
 </style>
 </head>
 <body>
-<h1>proxy-test · 订阅测速</h1>
+<div class="topbar">
+  <h1>proxy-test · 订阅测速</h1>
+  <button class="theme-btn" id="themeBtn" title="切换深色 / 浅色">🌙 深色</button>
+</div>
 <p class="muted">先测中继点直连，再测中继 → 出口。死链自动跳过（断路器），不浪费时间。
 测试跑在 Mac 本地 mihomo 上，每次只跑一组。</p>
 
@@ -48,10 +111,12 @@
   </div>
   <div id="subMsg" class="muted"></div>
 </div>
+<div class="table-wrap">
 <table id="subTable">
   <thead><tr><th>名字</th><th>来源</th><th>节点数</th><th>地区 / 出口协议</th><th></th></tr></thead>
   <tbody></tbody>
 </table>
+</div>
 
 <h2>2 · 测试</h2>
 <div class="tabs">
@@ -75,37 +140,110 @@
 <div id="progress"></div>
 
 <h2>3 · 结果</h2>
-<div id="summary" class="muted"></div>
+<div id="summary"></div>
+<div class="filterbar" id="filterBar" style="display:none">
+  <button data-f="all" class="active">全部</button>
+  <button data-f="ok">通过</button>
+  <button data-f="slow">过慢</button>
+  <button data-f="skipped">跳过</button>
+  <button data-f="failed">失败</button>
+  <label style="margin-left:8px"><input type="checkbox" id="autoFilterChk" checked> 自动过滤低速</label>
+  <label>低于 <input id="filterThreshold" type="number" value="0.5" min="0" max="100" step="0.1" style="width:56px"> MB/s 隐藏</label>
+  <span id="filteredInfo" class="muted" style="display:none"></span>
+  <button id="restoreBtn" style="display:none">恢复显示</button>
+  <input type="text" id="searchBox" placeholder="搜索节点名…">
+</div>
 <div id="compare"></div>
+<div class="table-wrap">
 <table id="resTable">
-  <thead><tr><th>节点 / 链路</th><th>类型</th><th>延迟</th><th>谷歌</th>
-  <th>YouTube</th><th>下载速度</th><th>状态</th></tr></thead>
+  <thead><tr>
+    <th class="sortable" data-sort="name">节点 / 链路</th>
+    <th>类型</th>
+    <th class="sortable" data-sort="delay">延迟</th>
+    <th class="sortable" data-sort="google">谷歌</th>
+    <th class="sortable" data-sort="youtube">YouTube</th>
+    <th class="sortable" data-sort="speed">下载速度</th>
+    <th class="sortable" data-sort="status">状态</th>
+  </tr></thead>
   <tbody></tbody>
 </table>
+</div>
 
 <h2>历史测试</h2>
+<div class="table-wrap">
 <table id="histTable">
   <thead><tr><th>时间</th><th>模式</th><th>状态</th><th>总数</th><th>通过</th><th>跳过</th><th>失败</th><th>最快</th><th></th></tr></thead>
   <tbody></tbody>
 </table>
+</div>
 
 <script>
 const $ = id => document.getElementById(id);
 let subs = [];
 let pollTimer = null;
 let mode = "single";
+let currentRun = null;
+let sortKey = "speed", sortDir = -1;   // 默认按速度从快到慢
+let filterStatus = "all", searchText = "";
+let autoFilter = true, filterThresholdMB = 0.5, filteredCount = 0;
+(function initFilterPrefs() {
+  try {
+    const a = localStorage.getItem("proxy-test-autofilter");
+    if (a !== null) autoFilter = a === "1";
+    const t = parseFloat(localStorage.getItem("proxy-test-threshold"));
+    if (t && t > 0) filterThresholdMB = t;
+  } catch(e) {}
+})();
 
+// ---------- 主题 ----------
+function applyTheme(t) {
+  document.documentElement.setAttribute("data-theme", t);
+  $("themeBtn").textContent = t === "dark" ? "☀️ 浅色" : "🌙 深色";
+  try { localStorage.setItem("proxy-test-theme", t); } catch(e) {}
+}
+(function initTheme() {
+  let t = null;
+  try { t = localStorage.getItem("proxy-test-theme"); } catch(e) {}
+  if (!t) t = (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+  applyTheme(t);
+})();
+$("themeBtn").onclick = () => {
+  const cur = document.documentElement.getAttribute("data-theme");
+  applyTheme(cur === "dark" ? "light" : "dark");
+};
+
+// ---------- 格式化 ----------
 function fmtSpeed(bps) {
   if (bps == null) return "—";
   if (bps >= 1048576) return (bps/1048576).toFixed(2) + " MB/s";
   if (bps >= 1024) return (bps/1024).toFixed(0) + " KB/s";
   return bps + " B/s";
 }
+function speedClass(bps) {
+  if (bps == null || bps <= 0) return "bad";
+  if (bps >= 5*1048576) return "ok";
+  if (bps >= 1048576) return "warn";
+  return "bad";
+}
+function speedBarColor(bps) {
+  if (bps == null || bps <= 0) return "var(--bad)";
+  if (bps >= 5*1048576) return "var(--ok)";
+  if (bps >= 1048576) return "var(--warn)";
+  return "var(--bad)";
+}
+function latencyClass(ms) {
+  if (ms == null) return "";
+  if (ms < 200) return "ok";
+  if (ms < 500) return "warn";
+  return "bad";
+}
 function cell(m) {
   if (!m) return "—";
   if (m.status === "skipped") return '<span class="skip">跳过</span>';
   if (m.code == null || m.code === 0) return '<span class="bad">失败</span>';
-  return m.code + " · " + (m.time_s != null ? m.time_s.toFixed(2) + "s" : "");
+  const ms = m.time_s != null ? Math.round(m.time_s * 1000) : null;
+  const cls = latencyClass(ms);
+  return m.code + ' · <span class="' + cls + '">' + (ms != null ? ms + "ms" : "") + "</span>";
 }
 function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
 
@@ -116,6 +254,7 @@ async function api(path, opts) {
   return t;
 }
 
+// ---------- 订阅 ----------
 async function refreshSubs() {
   subs = await api("/api/subscriptions");
   const tb = $("subTable").querySelector("tbody");
@@ -163,6 +302,7 @@ $("uploadBtn").onclick = async () => {
   } catch(e) { $("subMsg").textContent = "失败：" + e.message; }
 };
 
+// ---------- 模式切换 ----------
 function setMode(m) {
   mode = m;
   $("tabSingle").classList.toggle("active", m === "single");
@@ -173,6 +313,7 @@ function setMode(m) {
 $("tabSingle").onclick = () => setMode("single");
 $("tabRelay").onclick = () => setMode("relay");
 
+// ---------- 启动测试 ----------
 async function startTest(body) {
   try {
     const r = await api("/api/test/start", {method: "POST",
@@ -215,7 +356,106 @@ function fmtElapsed(s) {
   return Math.floor(s / 60) + "分" + (s % 60) + "秒";
 }
 
+// ---------- 排序 / 筛选 ----------
+function sortVal(r, key) {
+  if (key === "name") return (r.name || "").toLowerCase();
+  if (key === "speed") {
+    const d = r.download;
+    return (d && (d.status === "ok" || d.status === "slow") && d.speed_bps != null) ? d.speed_bps : -1;
+  }
+  if (key === "delay") return (r.delay && r.delay.time_s != null) ? r.delay.time_s : 1e9;
+  if (key === "google") return (r.google && r.google.time_s != null) ? r.google.time_s : 1e9;
+  if (key === "youtube") return (r.youtube && r.youtube.time_s != null) ? r.youtube.time_s : 1e9;
+  if (key === "status") {
+    const order = {ok: 0, slow: 1, skipped: 2, failed: 3};
+    return order[r.status] != null ? order[r.status] : 4;
+  }
+  return 0;
+}
+function usableSpeed(r) {
+  const d = r.download;
+  if (!d) return null;
+  if ((d.status === "ok" || d.status === "slow") && d.speed_bps != null) return d.speed_bps;
+  return null;
+}
+function applySortFilter(rows) {
+  let out = rows.slice();
+  filteredCount = 0;
+  if (autoFilter) {
+    const th = filterThresholdMB * 1048576;
+    const kept = [];
+    for (const r of out) {
+      if (r.status === "skipped") { kept.push(r); continue; }  // 断路器跳过的节点未测速，不过滤
+      const sp = usableSpeed(r);
+      if (sp != null && sp >= th) kept.push(r);
+      else filteredCount++;
+    }
+    out = kept;
+  }
+  if (filterStatus !== "all") out = out.filter(r => r.status === filterStatus);
+  if (searchText) {
+    const q = searchText.toLowerCase();
+    out = out.filter(r => (r.name || "").toLowerCase().includes(q));
+  }
+  out.sort((a, b) => {
+    const va = sortVal(a, sortKey), vb = sortVal(b, sortKey);
+    if (va < vb) return -sortDir;
+    if (va > vb) return sortDir;
+    return 0;
+  });
+  return out;
+}
+document.querySelectorAll("#resTable th.sortable").forEach(th => {
+  th.addEventListener("click", () => {
+    const k = th.dataset.sort;
+    if (sortKey === k) sortDir = -sortDir;
+    else { sortKey = k; sortDir = (k === "name") ? 1 : -1; }
+    document.querySelectorAll("#resTable th.sortable").forEach(h => {
+      h.classList.remove("sort-asc", "sort-desc");
+      if (h.dataset.sort === sortKey) h.classList.add(sortDir === 1 ? "sort-asc" : "sort-desc");
+    });
+    if (currentRun) renderResults(currentRun);
+  });
+});
+document.querySelectorAll("#filterBar button[data-f]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    filterStatus = btn.dataset.f;
+    document.querySelectorAll("#filterBar button[data-f]").forEach(b =>
+      b.classList.toggle("active", b === btn));
+    if (currentRun) renderResults(currentRun);
+  });
+});
+$("searchBox").addEventListener("input", e => {
+  searchText = e.target.value.trim();
+  if (currentRun) renderResults(currentRun);
+});
+
+// ---------- 自动过滤低速节点 ----------
+$("autoFilterChk").checked = autoFilter;
+$("filterThreshold").value = filterThresholdMB;
+$("autoFilterChk").addEventListener("change", e => {
+  autoFilter = e.target.checked;
+  try { localStorage.setItem("proxy-test-autofilter", autoFilter ? "1" : "0"); } catch(err) {}
+  if (currentRun) renderResults(currentRun);
+});
+$("filterThreshold").addEventListener("change", e => {
+  const v = parseFloat(e.target.value);
+  if (v && v > 0) {
+    filterThresholdMB = v;
+    try { localStorage.setItem("proxy-test-threshold", String(v)); } catch(err) {}
+    if (currentRun) renderResults(currentRun);
+  }
+});
+$("restoreBtn").addEventListener("click", () => {
+  autoFilter = false;
+  $("autoFilterChk").checked = false;
+  try { localStorage.setItem("proxy-test-autofilter", "0"); } catch(err) {}
+  if (currentRun) renderResults(currentRun);
+});
+
+// ---------- 渲染 ----------
 function renderRun(run) {
+  currentRun = run;
   const p = run.progress;
   const wtag = run.workers ? ` · ${run.workers} 并行` : "";
   if (run.status === "running" && p) {
@@ -230,24 +470,57 @@ function renderRun(run) {
   }
   const s = run.summary;
   if (s) {
-    $("summary").innerHTML = `总数 ${s.total} · 通过 ${s.ok} · 跳过 ${s.skipped}` +
-      (s.slow ? ` · 过慢 ${s.slow}` : "") + ` · 失败 ${s.failed}` +
-      (s.best ? ` · 最快：${esc(s.best.name)} ${fmtSpeed(s.best.speed_bps)}` : "");
+    const best = s.best ? `${esc(s.best.name)} ${fmtSpeed(s.best.speed_bps)}` : "—";
+    $("summary").innerHTML = `<div class="stats">
+      <div class="stat"><div class="num">${s.total}</div><div class="lbl">总数</div></div>
+      <div class="stat"><div class="num ok">${s.ok}</div><div class="lbl">通过</div></div>
+      <div class="stat"><div class="num skip">${s.skipped}</div><div class="lbl">跳过</div></div>
+      ${s.slow ? `<div class="stat"><div class="num warn">${s.slow}</div><div class="lbl">过慢</div></div>` : ""}
+      <div class="stat"><div class="num bad">${s.failed}</div><div class="lbl">失败</div></div>
+      <div class="stat" style="min-width:180px"><div class="num" style="font-size:15px">${best}</div><div class="lbl">最快</div></div>
+    </div>`;
+    $("filterBar").style.display = "flex";
   }
-  const rows = (run.results || []).map(r => {
+  renderResults(run);
+  renderCompare(run);
+}
+
+function updateFilteredInfo() {
+  const info = $("filteredInfo"), btn = $("restoreBtn");
+  if (autoFilter && filteredCount > 0) {
+    info.style.display = "";
+    info.textContent = `已自动过滤 ${filteredCount} 个低速/不可用节点`;
+    btn.style.display = "";
+  } else {
+    info.style.display = "none";
+    btn.style.display = "none";
+  }
+}
+
+function renderResults(run) {
+  const rows = applySortFilter(run.results || []);
+  const maxSpeed = Math.max(0, ...(run.results || []).map(r =>
+    (r.download && r.download.speed_bps) || 0));
+  const bestName = run.summary && run.summary.best ? run.summary.best.name : null;
+  $("resTable").querySelector("tbody").innerHTML = rows.map(r => {
     const st = r.status === "ok" ? '<span class="ok">通过</span>'
       : r.status === "skipped" ? '<span class="skip">跳过</span>'
-      : r.status === "slow" ? '<span class="skip">过慢</span>'
+      : r.status === "slow" ? '<span class="warn">过慢</span>'
       : '<span class="bad">失败</span>';
-    const dl = r.download && (r.download.status === "ok" || r.download.status === "slow")
-      ? fmtSpeed(r.download.speed_bps) : "—";
+    const d = r.download;
+    const hasDl = d && (d.status === "ok" || d.status === "slow");
+    const spd = hasDl ? d.speed_bps : null;
+    const dlHtml = hasDl
+      ? `<span class="${speedClass(spd)}">${fmtSpeed(spd)}</span>
+         <div class="speed-bar"><div style="width:${maxSpeed ? Math.round(100 * spd / maxSpeed) : 0}%;background:${speedBarColor(spd)}"></div></div>`
+      : "—";
     const note = r.status === "skipped" && r.delay && r.delay.reason ? esc(r.delay.reason) : "";
-    return `<tr><td>${esc(r.name)}${note ? "<br><span class='skip'>"+note+"</span>" : ""}</td>
+    const isBest = bestName && r.name === bestName;
+    return `<tr${isBest ? ' class="best-row"' : ""}><td>${esc(r.name)}${note ? "<br><span class='skip'>"+note+"</span>" : ""}</td>
       <td>${esc(r.kind||"")}</td><td>${cell(r.delay)}</td><td>${cell(r.google)}</td>
-      <td>${cell(r.youtube)}</td><td>${dl}</td><td>${st}</td></tr>`;
+      <td>${cell(r.youtube)}</td><td>${dlHtml}</td><td>${st}</td></tr>`;
   }).join("");
-  $("resTable").querySelector("tbody").innerHTML = rows;
-  renderCompare(run);
+  updateFilteredInfo();
 }
 
 function renderCompare(run) {
@@ -275,14 +548,15 @@ function renderCompare(run) {
       const verdict = cs > ds ? '<span class="ok">中继更快</span>'
         : (cs > 0 ? '<span class="bad">直连更快</span>' : '<span class="skip">无可用中继</span>');
       rows.push(`<tr><td>${esc(srv)} ${esc(proto)}</td>
-        <td>${fmtSpeed(ds)}</td><td>${bc ? esc(bc.name) + " " + fmtSpeed(cs) : "—"}</td>
+        <td><span class="${speedClass(ds)}">${fmtSpeed(ds)}</span></td>
+        <td>${bc ? esc(bc.name) + ' <span class="' + speedClass(cs) + '">' + fmtSpeed(cs) + "</span>" : "—"}</td>
         <td>${verdict}</td></tr>`);
     }
   }
   if (!rows.length) { $("compare").innerHTML = ""; return; }
   $("compare").innerHTML = `<h3>直连 vs 中继（同一出口）</h3>
-    <table><thead><tr><th>出口</th><th>直连速度</th><th>最快中继链</th><th>结论</th></tr></thead>
-    <tbody>${rows.join("")}</tbody></table>`;
+    <div class="table-wrap"><table><thead><tr><th>出口</th><th>直连速度</th><th>最快中继链</th><th>结论</th></tr></thead>
+    <tbody>${rows.join("")}</tbody></table></div>`;
 }
 
 async function refreshHist() {
